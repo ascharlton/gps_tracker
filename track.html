@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GPS Track Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .info { position: absolute; top: 10px; left: 10px; background: white; padding: 6px; border-radius: 4px; z-index: 1000; }
+  </style>
+</head>
+<body>
+  <div class="info" id="distanceInfo">Loading track...</div>
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- PapaParse to parse CSV -->
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <script>
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(map);
+
+    const trackLine = [];
+    let totalDistance = 0;
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const toRad = deg => deg * Math.PI / 180;
+      const R = 6371e3; // metres
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
+      const Δφ = toRad(lat2 - lat1), Δλ = toRad(lon2 - lon1);
+      const a = Math.sin(Δφ / 2) ** 2 +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // in meters
+    }
+
+    fetch('/track.csv')
+      .then(response => response.text())
+      .then(csv => {
+        Papa.parse(csv, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            const data = results.data;
+            let last = null;
+
+            data.forEach(row => {
+              const lat = parseFloat(row['latitude']);
+              const lon = parseFloat(row['longitude']);
+              if (!isNaN(lat) && !isNaN(lon)) {
+                const point = [lat, lon];
+                trackLine.push(point);
+
+                if (last) {
+                  totalDistance += haversine(last[0], last[1], lat, lon);
+                }
+                last = point;
+              }
+            });
+
+            if (trackLine.length > 0) {
+              const poly = L.polyline(trackLine, {color: 'blue'}).addTo(map);
+              map.fitBounds(poly.getBounds());
+
+              document.getElementById("distanceInfo").innerText =
+                `Track loaded: ${trackLine.length} points, ${totalDistance.toFixed(1)} meters`;
+            } else {
+              document.getElementById("distanceInfo").innerText = "No valid GPS points found.";
+            }
+          }
+        });
+      });
+  </script>
+</body>
+</html>
+
