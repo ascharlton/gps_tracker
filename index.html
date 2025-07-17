@@ -27,11 +27,32 @@
   <script>
     const map = L.map('map').setView([0, 0], 13);
     L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-    	minZoom: 12,
-    	maxZoom: 17,
+    	minZoom: 11,
+    	maxZoom: 19,
     	attribution: '© OpenStreetMap (offline)',
     	errorTileUrl: '/static/empty.png'  // optional: fallback for missing tiles
     }).addTo(map);
+
+       // Add zoom level display
+    const zoomLevelControl = L.control({ position: 'bottomright' });
+
+    zoomLevelControl.onAdd = function () {
+        const div = L.DomUtil.create('div', 'zoom-level-display');
+        div.style.background = 'rgba(255,255,255,0.8)';
+        div.style.padding = '4px 8px';
+        div.style.borderRadius = '6px';
+        div.style.fontFamily = 'sans-serif';
+        div.style.fontSize = '14px';
+        div.innerHTML = `Zoom: ${map.getZoom()}`;
+        return div;
+    };
+
+    zoomLevelControl.addTo(map);
+
+    map.on('zoomend', () => {
+        const controlDiv = document.querySelector('.zoom-level-display');
+        controlDiv.innerHTML = `Zoom: ${map.getZoom()}`;
+    });
 
     const marker = L.marker([0, 0]).addTo(map);
     let track = [];

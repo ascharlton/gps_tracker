@@ -37,7 +37,7 @@ def gps_polling_thread():
         if not new_data:
             continue
 
-        print(f"[RAW] {new_data}")
+        #print(f"[RAW] {new_data}")
         with open("raw_gps_log.json", "a") as f:
             f.write(new_data + "\n")
 
@@ -118,5 +118,5 @@ if __name__ == '__main__':
     thread.start()
 
     print("[INFO] Flask server running at http://0.0.0.0:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
