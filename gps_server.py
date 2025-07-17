@@ -1,11 +1,11 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, render_template
 from gps3 import gps3
 import csv
 import os
 import time
 import threading
 
-app = Flask(__name__, static_url_path='')
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 csv_file = "track.csv"
 lock = threading.Lock()
@@ -50,6 +50,7 @@ def gps_polling_thread():
         tpv = data_stream.TPV
         lat = tpv.get("lat", "n/a")
         lon = tpv.get("lon", "n/a")
+        #print(f"[GPS] lat: {lat}, lon: {lon}")
 
         if lat != "n/a" and lon != "n/a":
             # Update shared latest_data
@@ -84,7 +85,7 @@ def gps_polling_thread():
 
 @app.route('/')
 def serve_index():
-    return send_from_directory('', 'index.html')
+    return render_template('index.html')
 
 @app.route('/track.csv')
 def download_track():
@@ -100,7 +101,9 @@ def get_gps():
 
 @app.route('/tiles/<int:z>/<int:x>/<int:y>.png')
 def serve_tile(z, x, y):
-    return send_from_directory("tiles", f"{z}/{x}/{y}.png")
+    tile_path = f"{z}/{x}/{y}.png"
+    print(f"[TILE REQUEST] /tiles/{tile_path}")
+    return send_from_directory("tiles", tile_path)
 
 
 if __name__ == '__main__':
