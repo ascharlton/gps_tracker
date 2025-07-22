@@ -1,0 +1,17 @@
+[Unit]
+Description=GPS Server
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/pi/venv/bin/python3 /home/pi/gps_tracker/gps_server.py
+WorkingDirectory=/home/pi/gps_tracker
+User=pi
+Restart=on-failure
+Environment="PATH=/home/pi/venv/bin"
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
+

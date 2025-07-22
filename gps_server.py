@@ -44,7 +44,7 @@ def gps_polling_thread():
         try:
             data_stream.unpack(new_data)
         except Exception as e:
-            print(f"[WARN] Failed to unpack GPSD data: {e}")
+            #print(f"[WARN] Failed to unpack GPSD data: {e}")
             continue
 
         tpv = data_stream.TPV
