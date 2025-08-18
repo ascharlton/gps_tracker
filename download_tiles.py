@@ -5,6 +5,9 @@ import requests
 import time
 from tqdm import tqdm
 
+# python3 download_tiles.py --bbox 44.3381 15.0630 44.2285 15.3488 --zoom 12 13 14 15 16 17 18
+# or rsync -avz /local/folder/ pi@remote-host:/remote/folder/
+
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Raspberry Pi; Offline Tile Downloader)"}
 
