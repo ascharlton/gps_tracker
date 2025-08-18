@@ -3,6 +3,7 @@ from gps3 import gps3
 import csv
 import os
 import time
+import datetime
 import threading
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -10,6 +11,7 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 csv_file = "track.csv"
 lock = threading.Lock()
 last_logged_time = 0
+log_filename = datetime.datetime.now().strftime("raw_gps_log_%Y%m%d_%H%M%S.json")
 
 # Shared state
 latest_data = {
@@ -38,7 +40,7 @@ def gps_polling_thread():
             continue
 
         #print(f"[RAW] {new_data}")
-        with open("raw_gps_log.json", "a") as f:
+        with open(log_filename, "a") as f:
             f.write(new_data + "\n")
 
         try:
