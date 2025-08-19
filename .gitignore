@@ -1,3 +1,6 @@
 raw_gps_log*.json
 track.csv
 tiles/
+tiles_osm/
+tiles_sat/
+
