@@ -1,8 +1,8 @@
-map tiles are downloaded with the pyhtno script to a tiles folder:
+map tiles are downloaded with the pyhton script to a tiles folder:
 
-python3 download_tiles.py --bbox 44.3381 15.0630 44.2285 15.3488 --zoom 12 13 14 15 16 17 18 19
+--type sat or --type osm
+python download_tiles.py --bbox 44.3381 15.0630 44.2285 15.3488 --zoom 16 --type sat
 
-total was 788M
 
 if you want to copy them and update them to the raspberry pi use:
 rsync -avz tiles pi@192.168.1.198:/home/pi/gps_tracker/
@@ -12,7 +12,7 @@ To view the keel camera run a browser tab on http://192.168.2.2:8889/cam
 
 The Ip connection is provided when the usb port is initialized when the camera rpi zero boots
 
-You need to manually start the chrome instance due to heavy resource loads at startup - need to look for a lighter browser options!
+Chrome loads at startup on the localhost:5000 (gps_tracker)
 
 
 

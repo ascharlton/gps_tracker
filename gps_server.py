@@ -86,7 +86,8 @@ def gps_polling_thread():
                 last_logged_time = now
 
 @app.route('/')
-def serve_index():
+#def serve_index():
+def index():
     return render_template('index.html')
 
 @app.route('/track.csv')
@@ -101,11 +102,21 @@ def serve_track_viewer():
 def get_gps():
     return jsonify(latest_data)
 
-@app.route('/tiles/<int:z>/<int:x>/<int:y>.png')
-def serve_tile(z, x, y):
-    tile_path = f"{z}/{x}/{y}.png"
-    print(f"[TILE REQUEST] /tiles/{tile_path}")
-    return send_from_directory("tiles", tile_path)
+#@app.route('/tiles/<int:z>/<int:x>/<int:y>.png')
+#def serve_tile(z, x, y):
+#    tile_path = f"{z}/{x}/{y}.png"
+#    print(f"[TILE REQUEST] /tiles/{tile_path}")
+#    return send_from_directory("tiles", tile_path)
+
+# Serve OSM tiles
+@app.route('/tiles_osm/<int:z>/<int:x>/<int:y>.png')
+def tiles_osm(z, x, y):
+    return send_from_directory("tiles_osm", f"{z}/{x}/{y}.png")
+
+# Serve Satellite tiles
+@app.route('/tiles_satellite/<int:z>/<int:x>/<int:y>.png')
+def tiles_satellite(z, x, y):
+    return send_from_directory("tiles_sat", f"{z}/{x}/{y}.png")
 
 
 if __name__ == '__main__':

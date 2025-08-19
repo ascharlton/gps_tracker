@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live GPS Tracker</title>
+  <title>Offline GPS Tracker</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/leaflet.css" />
@@ -20,6 +20,24 @@
       font-family: sans-serif;
       z-index: 1000;
     }
+    .leaflet-control-layers-globe::before {
+    	content: '';
+    	display: block;
+    	width: 30px;
+    	height: 30px;
+	margin: 5px auto;
+    	background-image: url('data:image/svg+xml;utf8,\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">\
+<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18\
+c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M0 0h24v24H0z" fill="none"/>\
+</svg>');
+
+	background-size: contain;
+    	background-repeat: no-repeat;
+    }
+    .leaflet-control-layers {
+    	//padding-top: 40px; /* push content below the globe */
+    }	
   </style>
 </head>
 <body>
@@ -27,13 +45,51 @@
   <div id="map"></div>
   <script src="/static/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([44, 15], 13);
-    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-    	minZoom: 11,
-    	maxZoom: 19,
-    	attribution: '© OpenStreetMap (offline)',
-    	errorTileUrl: '/static/icons/empty.png'
-    }).addTo(map);
+
+    // Base map layers
+    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    });
+
+    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', {
+      attribution: 'Source: Esri, Maxar, Earthstar Geographics',
+      maxZoom: 19
+    });
+
+    // Init map
+    const map = L.map('map', {
+      center: [44.3, 15.2],  // Change to your area
+      zoom: 12,
+      layers: [osm] // Default is OSM
+    });
+
+
+    // Layer control
+    const baseMaps = {
+    	"OSM": osm,
+    	"Satellite": satellite
+    };
+
+    L.control.layers(baseMaps).addTo(map);
+
+    // Grab the layer control div
+    const layersControl = document.querySelector('.leaflet-control-layers');
+    const globeIcon = document.createElement('div');
+    globeIcon.className = 'leaflet-control-layers-globe';
+    layersControl.insertBefore(globeIcon, layersControl.firstChild);
+
+    globeIcon.addEventListener('click', () => {
+    	alert('Globe clicked!');
+    });
+
+    //const map = L.map('map').setView([44, 15], 13);
+    //L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+   // 	minZoom: 11,
+   // 	maxZoom: 19,
+   // 	attribution: '© OpenStreetMap (offline)',
+   // 	errorTileUrl: '/static/icons/empty.png'
+    //}).addTo(map);
       // Fix for Flask static folder
 
     const customIcon = L.icon({
