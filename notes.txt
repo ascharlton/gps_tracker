@@ -1,4 +1,4 @@
-map tiles are downloaded with the pyhton script to a tiles folder:
+map tiles are downloaded with the python script to a tiles folder:
 
 --type sat or --type osm
 python download_tiles.py --bbox 44.3381 15.0630 44.2285 15.3488 --zoom 16 --type sat
@@ -14,5 +14,14 @@ The Ip connection is provided when the usb port is initialized when the camera r
 
 Chrome loads at startup on the localhost:5000 (gps_tracker)
 
+
+TLDR;
+
+python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type osm
+python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type sat
+(wait for a long time)
+cd gps_server/
+python3 gps_server.py
+http://localhost:5000
 
 
