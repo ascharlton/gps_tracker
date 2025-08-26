@@ -1,83 +1,121 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <title>Track Viewer</title>
   <meta charset="utf-8" />
-  <title>GPS Track Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/leaflet.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .info { position: absolute; top: 10px; left: 10px; background: white; padding: 6px; border-radius: 4px; z-index: 1000; }
+    #map { height: 100vh; width: 100%; }
+    #info {
+      position: absolute;
+      top: 20px;
+      left: 100px;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      z-index: 1000;
+    }
   </style>
 </head>
 <body>
-  <div class="info" id="distanceInfo">Loading track...</div>
+  <div id="info">Loading track...</div>
   <div id="map"></div>
-
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- PapaParse to parse CSV -->
-  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
-
+  <script src="/static/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18
-    }).addTo(map);
+    // --- Map setup ---
+    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    });
 
-    const trackLine = [];
-    let totalDistance = 0;
+    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', {
+      attribution: 'Source: Esri, Maxar, Earthstar Geographics',
+      maxZoom: 19
+    });
 
-    function haversine(lat1, lon1, lat2, lon2) {
+    const map = L.map('map', {
+      center: [44.3, 15.2], // fallback
+      zoom: 12,
+      layers: [osm]
+    });
+
+    L.control.layers({ "OSM": osm, "Satellite": satellite }).addTo(map);
+
+    const infoBox = document.getElementById("info");
+
+    const customIcon = L.icon({
+      iconUrl: "/static/icons/marker-icon.png",
+      shadowUrl: "/static/icons/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    const trackLine = L.polyline([], { color: "blue" }).addTo(map);
+
+    // --- Haversine distance ---
+    function haversineDistance(lat1, lon1, lat2, lon2) {
       const toRad = deg => deg * Math.PI / 180;
-      const R = 6371e3; // metres
-      const φ1 = toRad(lat1), φ2 = toRad(lat2);
-      const Δφ = toRad(lat2 - lat1), Δλ = toRad(lon2 - lon1);
-      const a = Math.sin(Δφ / 2) ** 2 +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) ** 2;
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLon / 2) ** 2;
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c; // in meters
+      return R * c;
     }
 
-    fetch('/track.csv')
-      .then(response => response.text())
-      .then(csv => {
-        Papa.parse(csv, {
-          header: true,
-          skipEmptyLines: true,
-          complete: function(results) {
-            const data = results.data;
-            let last = null;
+    // --- Load track ---
+    async function loadTrack(date) {
+      try {
+        const res = await fetch(`/track/${date}`);
+        if (!res.ok) {
+          infoBox.textContent = `No track available for ${date}`;
+          return;
+        }
+        const points = await res.json();
+        if (points.length === 0) {
+          infoBox.textContent = `No points recorded for ${date}`;
+          return;
+        }
 
-            data.forEach(row => {
-              const lat = parseFloat(row['latitude']);
-              const lon = parseFloat(row['longitude']);
-              if (!isNaN(lat) && !isNaN(lon)) {
-                const point = [lat, lon];
-                trackLine.push(point);
+        const latlngs = points.map(p => [p.lat, p.lon]);
+        trackLine.setLatLngs(latlngs);
+        map.fitBounds(trackLine.getBounds());
 
-                if (last) {
-                  totalDistance += haversine(last[0], last[1], lat, lon);
-                }
-                last = point;
-              }
-            });
+        // Add start/end markers
+        const start = latlngs[0];
+        const end = latlngs[latlngs.length - 1];
+        L.marker(start, { icon: customIcon }).addTo(map).bindPopup("Start");
+        L.marker(end, { icon: customIcon }).addTo(map).bindPopup("End");
 
-            if (trackLine.length > 0) {
-              const poly = L.polyline(trackLine, {color: 'blue'}).addTo(map);
-              map.fitBounds(poly.getBounds());
+        // Compute distance
+        let dist = 0;
+        for (let i = 1; i < latlngs.length; i++) {
+          dist += haversineDistance(
+            latlngs[i-1][0], latlngs[i-1][1],
+            latlngs[i][0], latlngs[i][1]
+          );
+        }
+        infoBox.textContent = `Track for ${date} — Distance: ${dist.toFixed(2)} km`;
+      } catch (err) {
+        console.error("Track load failed:", err);
+        infoBox.textContent = "Error loading track";
+      }
+    }
 
-              document.getElementById("distanceInfo").innerText =
-                `Track loaded: ${trackLine.length} points, ${totalDistance.toFixed(1)} meters`;
-            } else {
-              document.getElementById("distanceInfo").innerText = "No valid GPS points found.";
-            }
-          }
-        });
-      });
+    // --- Parse ?date=YYYY-MM-DD ---
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get("date");
+    if (date) {
+      loadTrack(date);
+    } else {
+      infoBox.textContent = "No date specified. Use ?date=YYYY-MM-DD";
+    }
   </script>
 </body>
 </html>
