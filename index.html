@@ -1,114 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Offline GPS Tracker</title>
   <meta charset="utf-8" />
+  <title>Offline GPS Tracker (WebSocket)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/leaflet.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <style>
-    #map { height: 100vh; width: 100%; }
-    .leaflet-container { height: 100vh; }
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100vh; width: 100%; background: lightgray; }
     #info {
-      position: absolute;
-      top: 20px;
-      left: 100px;
-      background: rgba(255, 255, 255, 0.8);
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-family: sans-serif;
-      z-index: 1000;
+      position: absolute; top: 20px; left: 100px;
+      background: rgba(255,255,255,0.9);
+      padding: 6px 12px; border-radius: 8px;
+      font-family: sans-serif; z-index: 1000;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
-    .leaflet-control-layers-globe::before {
-      content: '';
-      display: block;
-      width: 30px;
-      height: 30px;
-      margin: 5px auto;
-      background-image: url('data:image/svg+xml;utf8,\
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">\
-<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18\
-c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M0 0h24v24H0z" fill="none"/>\
-</svg>');
-      background-size: contain;
-      background-repeat: no-repeat;
+    .zoom-level-display {
+      background: rgba(255,255,255,0.9); padding: 6px 8px;
+      border-radius: 6px; font-family: sans-serif;
+      font-size: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
+    .leaflet-control-layers-toggle {
+      background-image: url('/static/icons/globe.png') !important;
+      background-size: 20px 20px;
+      width: 30px !important;
+      height: 30px !important;
+    }
+
   </style>
 </head>
 <body>
   <div id="info">Distance: 0.00 km</div>
   <div id="map"></div>
+
+  <!-- Local Leaflet -->
   <script src="/static/leaflet.js"></script>
-  <script>
-    // Base map layers
-    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19
-    });
+  <!-- Socket.IO client (served automatically by socket.io on server) -->
+  <script src="/socket.io/socket.io.js"></script>
 
-    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', {
-      attribution: 'Source: Esri, Maxar, Earthstar Geographics',
-      maxZoom: 19
-    });
+  <script type="module">
+  // --- Map setup ---
+  const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { maxZoom: 19, attribution: "OSM" });
+  const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { maxZoom: 19, attribution: "Satellite" });
 
-    // Init map
-    const map = L.map('map', {
-      center: [44.3, 15.2],
-      zoom: 12,
-      layers: [osm]
-    });
+  const map = L.map('map', { center: [44.3, 15.2], zoom: 12, layers: [osm] });
+  //const baseMaps = { "OSM": osm, "Satellite": satellite };
+  //L.control.layers(baseMaps).addTo(map);
+  const baseMaps = { "🌍 OSM": osm, "🛰 Satellite": satellite };
+  L.control.layers(baseMaps, {}, { collapsed: true }).addTo(map);
 
-    // Layer control
-    const baseMaps = { "OSM": osm, "Satellite": satellite };
-    L.control.layers(baseMaps).addTo(map);
 
-    // Custom marker
-    const customIcon = L.icon({
-      iconUrl: "/static/icons/marker-icon.png",
-      shadowUrl: "/static/icons/marker-shadow.png",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41]
-    });
+  // --- Zoom level display ---
+  const zoomLevelControl = L.control({ position: 'bottomright' });
+  zoomLevelControl.onAdd = () => {
+    const div = L.DomUtil.create('div', 'zoom-level-display');
+    div.innerHTML = `Zoom: ${map.getZoom()}`;
+    return div;
+  };
+  zoomLevelControl.addTo(map);
+  map.on('zoomend', () => {
+    document.querySelector('.zoom-level-display').innerHTML = `Zoom: ${map.getZoom()}`;
+  });
 
-    const marker = L.marker([44,15], {icon:customIcon}).addTo(map);
-    let track = [];
-    const polyline = L.polyline(track, { color: 'red' }).addTo(map);
-    let totalDistance = 0;
+  // --- Track + marker ---
+  const customIcon = L.icon({ iconUrl: "/static/icons/marker-icon.png", shadowUrl: "/static/icons/marker-shadow.png",
+    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+  const marker = L.marker([44.3, 15.2], { icon: customIcon }).addTo(map);
+  const track = [];
+  const polyline = L.polyline(track, { color: 'red' }).addTo(map);
 
-    function haversineDistance(lat1, lon1, lat2, lon2) {
-      const toRad = deg => deg * Math.PI / 180;
-      const R = 6371;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-                Math.sin(dLon / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
+  let lastTrackUpdate = 0;
+  let totalDistance = 0;
+  const haversineKm = (a, b) => {
+    const R = 6371, toRad = d => d * Math.PI/180;
+    const dLat = toRad(b[0]-a[0]), dLon = toRad(b[1]-a[1]);
+    const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  };
 
-    // --- WebSocket live updates ---
-    const ws = new WebSocket(`ws://${location.host}`);
+  // --- WebSocket client ---
+  const socket = io();
+  socket.on("gps", (gpsData) => {
+    const latLng = [gpsData.lat, gpsData.lon];
+    marker.setLatLng(latLng);
+    map.panTo(latLng);
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.lat && data.lon) {
-        const latLng = [data.lat, data.lon];
-        marker.setLatLng(latLng);
-        map.setView(latLng);
-
-        if (track.length > 0) {
-          const last = track[track.length - 1];
-          totalDistance += haversineDistance(last[0], last[1], latLng[0], latLng[1]);
-        }
-        track.push(latLng);
-        polyline.setLatLngs(track);
-        document.getElementById("info").textContent = `Distance: ${totalDistance.toFixed(2)} km`;
+    const now = Date.now();
+    if (now - lastTrackUpdate >= 2000) {
+      if (track.length > 0) {
+        totalDistance += haversineKm(track[track.length-1], latLng);
       }
-    };
-
-    ws.onerror = (e) => console.error("WebSocket error:", e);
+      track.push(latLng);
+      polyline.setLatLngs(track);
+      document.getElementById("info").textContent = `Distance: ${totalDistance.toFixed(2)} km`;
+      lastTrackUpdate = now;
+    }
+  });
   </script>
 </body>
 </html>

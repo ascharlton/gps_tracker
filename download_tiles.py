@@ -9,7 +9,7 @@ from tqdm import tqdm
 # Default tile URLs
 TILE_URLS = {
     "osm": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    "sat": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    "satellite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 }
 HEADERS = {"User-Agent": "Mozilla/5.0 (Raspberry Pi; Offline Tile Downloader)"}
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Offline Tile Downloader")
     parser.add_argument("--bbox", nargs=4, type=float, metavar=('MIN_LAT', 'MIN_LON', 'MAX_LAT', 'MAX_LON'), required=True, help="Bounding box")
     parser.add_argument("--zoom", nargs="+", type=int, required=True, help="Zoom levels (e.g. 14 15 16)")
-    parser.add_argument("--type", choices=["osm", "sat"], default="osm", help="Tile source (osm or sat)")
+    parser.add_argument("--type", choices=["osm", "satellite"], default="osm", help="Tile source (osm or satellite)")
     parser.add_argument("--output", help="Directory to save tiles (default: tiles_osm or tiles_satellite)")
     parser.add_argument("--mbtiles", help="Optional MBTiles output file")
     args = parser.parse_args()

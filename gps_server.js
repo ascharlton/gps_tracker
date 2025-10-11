@@ -1,112 +1,90 @@
 // gps_server.js
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const net = require('net');
-const fs = require('fs');
-const readline = require('readline');
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const http = require("http");
+const socketIo = require("socket.io");
+const { spawn } = require("child_process");
 
 const app = express();
-const PORT = 5001;
+const server = http.createServer(app);
+const io = socketIo(server);
 
-// --- Serve static files (frontend + tiles) ---
-app.use('/static', express.static(path.join(__dirname, 'static')));
-app.use('/tiles_osm', express.static(path.join(__dirname, 'tiles_osm')));
-app.use('/tiles_satellite', express.static(path.join(__dirname, 'tiles_satellite')));
-app.use(express.static(__dirname)); // serve index.html at "/"
+const PORT = 5000;
+const LOG_DIR = path.join(__dirname, "logs");
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
 
-// --- GPS state ---
-let latestFix = { lat: null, lon: null, time: null };
+// Serve static files (map, leaflet, icons, tiles, etc.)
+app.use("/static", express.static(path.join(__dirname, "static")));
+app.use("/tiles_osm", express.static(path.join(__dirname, "tiles_osm")));
+app.use("/tiles_satellite", express.static(path.join(__dirname, "tiles_satellite")));
 
-// Ensure tracks dir exists
-const tracksDir = path.join(__dirname, 'tracks');
-if (!fs.existsSync(tracksDir)) fs.mkdirSync(tracksDir);
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static', 'favicon.ico'));
+});
 
-// --- Logging helper ---
-function appendTrack(fix) {
-  if (!fix.lat || !fix.lon) return;
-  const dateStr = fix.time ? fix.time.slice(0, 10) : new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const filePath = path.join(tracksDir, `${dateStr}.csv`);
-  const line = `${fix.time},${fix.lat},${fix.lon}\n`;
-  fs.appendFile(filePath, line, (err) => {
-    if (err) console.error('[Track] Write error:', err.message);
-  });
+// --- Daily track + raw log filenames ---
+function getDateString() {
+  return new Date().toISOString().split("T")[0];
+}
+function getTrackFilename() {
+  return path.join(LOG_DIR, `track_${getDateString()}.csv`);
+}
+function getRawFilename() {
+  return path.join(LOG_DIR, `raw_${getDateString()}.log`);
 }
 
-// --- GPSD socket ---
-function startGpsStream() {
-  const client = net.createConnection({ port: 2947, host: '127.0.0.1' }, () => {
-    console.log('[GPSD] Connected to gpsd');
-    client.write('?WATCH={"enable":true,"json":true};\n');
-  });
+// Track endpoint (review past tracks)
+app.get("/track/:date", (req, res) => {
+  const filename = path.join(LOG_DIR, `track_${req.params.date}.csv`);
+  if (fs.existsSync(filename)) res.sendFile(filename);
+  else res.status(404).send("Track file not found");
+});
 
-  client.on('data', (data) => {
+// --- GPSD stream ---
+const gpsd = spawn("gpspipe", ["-w"]);
+gpsd.stdout.on("data", (data) => {
+  const lines = data.toString().split("\n").filter(Boolean);
+  for (let line of lines) {
     try {
-      const lines = data.toString().split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const json = JSON.parse(line);
-        if (json.class === 'TPV' && json.lat && json.lon) {
-          latestFix = {
-            lat: json.lat,
-            lon: json.lon,
-            time: json.time || new Date().toISOString()
-          };
-          console.log(`[GPSD] Fix: ${latestFix.lat}, ${latestFix.lon}`);
-          appendTrack(latestFix);
-        }
+      const msg = JSON.parse(line);
+      if (msg.class === "TPV" && msg.lat && msg.lon) {
+        const gpsData = {
+          lat: msg.lat,
+          lon: msg.lon,
+          speed: msg.speed || 0,
+          track: msg.track || 0,
+          time: msg.time || new Date().toISOString(),
+        };
+
+        // --- Broadcast via WebSocket ---
+        io.emit("gps", gpsData);
+
+        // --- Append to daily track ---
+        fs.appendFileSync(
+          getTrackFilename(),
+          `${gpsData.time},${gpsData.lat},${gpsData.lon},${gpsData.speed},${gpsData.track}\n`
+        );
+
+        // --- Raw log ---
+        fs.appendFileSync(getRawFilename(), line + "\n");
+	console.log("printed to raw log");
       }
     } catch (err) {
-      console.error('[GPSD] Parse error:', err.message);
-    }
-  });
-
-  client.on('error', (err) => {
-    console.error('[GPSD] Connection error:', err.message);
-    setTimeout(startGpsStream, 5000);
-  });
-
-  client.on('end', () => {
-    console.warn('[GPSD] Disconnected. Reconnecting...');
-    setTimeout(startGpsStream, 5000);
-  });
-}
-
-// Start GPS stream
-startGpsStream();
-
-// --- API: live GPS ---
-app.get('/gps', (req, res) => {
-  res.json(latestFix);
-});
-
-// --- API: load a day's track ---
-app.get('/track/:date', async (req, res) => {
-  const date = req.params.date; // expect YYYY-MM-DD
-  const filePath = path.join(tracksDir, `${date}.csv`);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: `No track for ${date}` });
-  }
-
-  const points = [];
-  const rl = readline.createInterface({
-    input: fs.createReadStream(filePath),
-    crlfDelay: Infinity
-  });
-
-  for await (const line of rl) {
-    const [time, lat, lon] = line.split(',');
-    if (lat && lon) {
-      points.push({ time, lat: parseFloat(lat), lon: parseFloat(lon) });
+      fs.appendFileSync(getRawFilename(), "ERROR parsing line: " + line + "\n");
     }
   }
-
-  res.json(points);
 });
 
-// --- Start HTTP server ---
-http.createServer(app).listen(PORT, '0.0.0.0', () => {
+gpsd.stderr.on("data", (data) => {
+  console.error("gpspipe error:", data.toString());
+});
+
+// --- Start server ---
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFO] Server running at http://0.0.0.0:${PORT}`);
 });
 

@@ -1,27 +1,49 @@
 map tiles are downloaded with the python script to a tiles folder:
 
---type sat or --type osm
+--type satellite or --type osm
 python download_tiles.py --bbox 44.3381 15.0630 44.2285 15.3488 --zoom 16 --type sat
 
+for lower zoom levels:
+python download_tiles.py --bbox 45.3381 13.0630 43.2285 16.3488 --zoom 10 --type satellite
+for higher zoom levels:
 
-if you want to copy them and update them to the raspberry pi use:
+
+if you want to download on a faster machine, copy them and update them to the raspberry pi use:
 rsync -avz tiles pi@192.168.1.198:/home/pi/gps_tracker/
 
 On boot gps_tracker/gsp_server.py runs as a systemd service and loads a web server on port 5000 http://localhost:5000
 To view the keel camera run a browser tab on http://192.168.2.2:8889/cam
 
-The Ip connection is provided when the usb port is initialized when the camera rpi zero boots
+The IP connection is provided when the usb port is initialized when the camera rpi zero boots
 
-Chrome loads at startup on the localhost:5000 (gps_tracker)
+#Chrome loads at startup on the localhost:5000 (gps_tracker)
 
 
 TLDR;
 
 python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type osm
-python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type sat
+python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type satellite
+
+
+# real close:
+python3 download_tiles.py --bbox 44.25500661753673, 15.207463630898317 44.251247489149826, 15.21450212044336 --zoom 18 19 --type satellite
+
+
 (wait for a long time)
 cd gps_server/
-python3 gps_server.py
+node gps_server.js
 http://localhost:5000
 
+
+TODO:
+
+1. the browser only updates if it is in focus, online, running in foreground etc. Possibly use a more regular storage to plot the tracks. Plot the days tracks from a persistant storage - flush or overwrite a temp log file that is a record of the gps positions captured since start.
+
+2. Show when the error rate is high at the gps input - show a red circle showing accuracy is low
+
+3. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load
+
+4. Use a dot instead of the default icon
+
+5. 
 

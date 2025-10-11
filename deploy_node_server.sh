@@ -1,6 +1,22 @@
 #!/bin/bash
 set -e
 
+
+# Install nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+source ~/.bashrc
+
+# Install and use the latest LTS version
+nvm install --lts
+nvm use --lts
+
+# Verify installation
+node -v
+npm -v
+
+cd ~/repos/gps_tracker
+
+
 APP_NAME="gps_tracker"
 SCRIPT="gps_server.js"
 
