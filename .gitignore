@@ -3,4 +3,7 @@ track.csv
 tiles/
 tiles_osm/
 tiles_sat/
-
+tiles_satellite/
+node_modules/
+tracks/
+logs/
