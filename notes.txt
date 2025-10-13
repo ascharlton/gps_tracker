@@ -49,3 +49,4 @@ TODO:
 
 6. Add a control to allow viewing real time gps data scrolling at bottom
 
+7. Add number of satellites, speed and bearing next to distance travelled
