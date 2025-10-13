@@ -64,11 +64,6 @@
       font-size: 12px; font-weight: bold; color: blue;
       text-align: center;
     }
-
-    /* Custom large crosshair cursor */
-    .crosshair-cursor {
-      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><line x1="24" y1="0" x2="24" y2="48" stroke="red" stroke-width="2"/><line x1="0" y1="24" x2="48" y2="24" stroke="red" stroke-width="2"/></svg>') 24 24, crosshair;
-    }
   </style>
 </head>
 
@@ -159,8 +154,8 @@
         container.classList.toggle('active',placementMode);
         container.title=placementMode?"Click map to place target":"Enable target placement";
 
-        // --- LARGE CROSSHAIR CURSOR ---
-        map.getContainer().classList.toggle('crosshair-cursor', placementMode);
+        // --- CURSOR CHANGE ---
+        map.getContainer().style.cursor = placementMode ? 'crosshair' : '';
       });
 
       return container;
@@ -197,7 +192,7 @@
       document.querySelector('.leaflet-control-target').classList.remove('active');
 
       // --- RESTORE CURSOR ---
-      map.getContainer().classList.remove('crosshair-cursor');
+      map.getContainer().style.cursor = '';
     });
 
     const socket=io();
@@ -227,6 +222,7 @@
         else icon.classList.add("glow-nofix");
       }
 
+      // --- Live update distance to target ---
       if(targetMarker && targetLine){
         const targetPos=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];
         const distance=haversineKm(latLng,targetPos).toFixed(2);
