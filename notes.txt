@@ -50,3 +50,11 @@ TODO:
 6. Add a control to allow viewing real time gps data scrolling at bottom
 
 7. Add number of satellites, speed and bearing next to distance travelled
+from here: 
+gps_tracker=# select * from gps_points order by id desc limit 1;
+ id  |       timestamp        |    lat     |    lon     | speed |  track   |     accuracy      | fix_mode
+-----+------------------------+------------+------------+-------+----------+-------------------+----------
+ 540 | 2025-10-13 13:14:25+02 | 44.2528605 | 15.2111875 | 0.008 | 113.6553 | 8.085721241794081 |        3
+
+
+

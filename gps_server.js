@@ -1,21 +1,34 @@
-// gps_server.js
+// gps_server.js — PostgreSQL version
+
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const socketIo = require("socket.io");
 const { spawn } = require("child_process");
-//const chalk = require("chalk");
+const { Pool } = require("pg");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
 const PORT = 5000;
-const LOG_DIR = path.join(__dirname, "logs");
-if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
+const DEBUG = process.argv.includes("DEBUG=1") || process.env.DEBUG === "1";
 
-// Serve static files
+// --- PostgreSQL connection ---
+const pool = new Pool({
+  user: "pi",
+  host: "localhost",
+  database: "gps_tracker",
+  password: "ch1rlt4n", // change this
+  port: 5432,
+});
+
+pool.connect()
+  .then(() => console.log("[INFO] Connected to PostgreSQL"))
+  .catch(err => console.error("[ERROR] DB connection failed:", err.message));
+
+// --- Serve static assets ---
 app.use("/static", express.static(path.join(__dirname, "static")));
 app.use("/tiles_osm", express.static(path.join(__dirname, "tiles_osm")));
 app.use("/tiles_satellite", express.static(path.join(__dirname, "tiles_satellite")));
@@ -27,68 +40,71 @@ app.get("/favicon.ico", (req, res) => {
   res.sendFile(path.join(__dirname, "static", "favicon.ico"));
 });
 
-// --- Daily filenames ---
-function getDateString() {
-  return new Date().toISOString().split("T")[0];
-}
-function getTrackFilename() {
-  return path.join(LOG_DIR, `track_${getDateString()}.csv`);
-}
-function getRawFilename() {
-  return path.join(LOG_DIR, `raw_${getDateString()}.log`);
-}
+// --- REST endpoints using Postgres ---
+app.get("/raw/:date", async (req, res) => {
+  try {
+    const date = req.params.date;
+    const { rows } = await pool.query(`
+      SELECT message
+      FROM gps_raw
+      WHERE DATE(timestamp) = $1
+      ORDER BY timestamp ASC
+    `, [date]);
 
-// --- Track endpoint ---
-app.get("/track/:date", (req, res) => {
-  const filename = path.join(LOG_DIR, `track_${req.params.date}.csv`);
-  if (fs.existsSync(filename)) res.sendFile(filename);
-  else res.status(404).send("Track file not found");
-});
+    const points = rows
+      .map(r => r.message)
+      .filter(m => m.class === "TPV" && m.lat && m.lon)
+      .map(m => ({
+        lat: m.lat,
+        lon: m.lon,
+        speed: m.speed || 0,
+        track: m.track || 0,
+        time: m.time || new Date().toISOString(),
+      }));
 
-// --- Raw log endpoint ---
-app.get("/raw/:date", (req, res) => {
-  const filename = path.join(LOG_DIR, `raw_${req.params.date}.log`);
-  if (!fs.existsSync(filename)) return res.json([]);
-
-  const lines = fs.readFileSync(filename, "utf8").split("\n").filter(Boolean);
-  const points = [];
-  for (let line of lines) {
-    try {
-      const msg = JSON.parse(line);
-      if (msg.class === "TPV" && msg.lat && msg.lon) {
-        points.push({
-          lat: msg.lat,
-          lon: msg.lon,
-          speed: msg.speed || 0,
-          track: msg.track || 0,
-          time: msg.time || new Date().toISOString(),
-        });
-      }
-    } catch {
-      // Ignore malformed lines
-    }
+    res.json(points);
+  } catch (err) {
+    console.error("[ERROR] /raw query failed:", err.message);
+    res.status(500).json({ error: "DB query failed" });
   }
-  res.json(points);
 });
 
-// --- GPSD stream ---
+app.get("/track/:date", async (req, res) => {
+  try {
+    const date = req.params.date;
+    const { rows } = await pool.query(`
+      SELECT timestamp, lat, lon, speed, track
+      FROM gps_points
+      WHERE DATE(timestamp) = $1
+      ORDER BY timestamp ASC
+    `, [date]);
+    res.json(rows);
+  } catch (err) {
+    console.error("[ERROR] /track query failed:", err.message);
+    res.status(500).json({ error: "DB query failed" });
+  }
+});
+
+// --- GPSD live stream ---
 const gpsd = spawn("gpspipe", ["-w"]);
-const DEBUG = process.argv.includes("DEBUG=1") || process.env.DEBUG === "1";
 
 let lastFixMode = 0;
 let lastAccuracyWarn = false;
 let lastSatInfo = { used: 0, total: 0 };
 
-gpsd.stdout.on("data", (data) => {
+gpsd.stdout.on("data", async (data) => {
   const lines = data.toString().split("\n").filter(Boolean);
   for (let line of lines) {
     try {
       const msg = JSON.parse(line);
 
-      // --- Optional full debug output ---
-      if (DEBUG) {
-        console.log("[DEBUG] Raw:", line);
-      }
+      if (DEBUG) console.log("[DEBUG]", msg.class, msg.mode || "");
+
+      // --- Store every message in gps_raw ---
+      await pool.query(
+        "INSERT INTO gps_raw (message) VALUES ($1)",
+        [msg]
+      );
 
       // --- Handle TPV messages ---
       if (msg.class === "TPV") {
@@ -106,19 +122,26 @@ gpsd.stdout.on("data", (data) => {
           lastFixMode = mode;
         }
 
-        // If valid fix, process data
+        // If valid fix, log to gps_points
         if (mode >= 2 && msg.lat && msg.lon) {
-          const gpsData = {
-            lat: msg.lat,
-            lon: msg.lon,
-            speed: msg.speed || 0,
-            track: msg.track || 0,
-            time: msg.time || new Date().toISOString(),
-          };
+          const horizAcc = msg.epx && msg.epy ? Math.sqrt(msg.epx ** 2 + msg.epy ** 2) : null;
 
-          // Check horizontal accuracy
-          if (!DEBUG && msg.epx && msg.epy) {
-            const horizAcc = Math.sqrt(msg.epx ** 2 + msg.epy ** 2);
+          await pool.query(
+            `INSERT INTO gps_points (timestamp, lat, lon, speed, track, accuracy, fix_mode)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              msg.time || new Date().toISOString(),
+              msg.lat,
+              msg.lon,
+              msg.speed || 0,
+              msg.track || 0,
+              horizAcc,
+              msg.mode,
+            ]
+          );
+
+          // Accuracy monitoring
+          if (!DEBUG && horizAcc) {
             const lowAccuracy = horizAcc > 10;
             if (lowAccuracy && !lastAccuracyWarn) {
               console.warn(`[WARN] Low accuracy: ±${horizAcc.toFixed(1)} m`);
@@ -129,13 +152,14 @@ gpsd.stdout.on("data", (data) => {
             }
           }
 
-          // Emit and log GPS data
-          io.emit("gps", gpsData);
-          fs.appendFileSync(
-            getTrackFilename(),
-            `${gpsData.time},${gpsData.lat},${gpsData.lon},${gpsData.speed},${gpsData.track}\n`
-          );
-          fs.appendFileSync(getRawFilename(), line + "\n");
+          // Emit live data to web client
+          io.emit("gps", {
+            lat: msg.lat,
+            lon: msg.lon,
+            speed: msg.speed || 0,
+            track: msg.track || 0,
+            time: msg.time || new Date().toISOString(),
+          });
         }
       }
 
@@ -150,12 +174,10 @@ gpsd.stdout.on("data", (data) => {
       }
 
     } catch (err) {
-      fs.appendFileSync(getRawFilename(), "ERROR parsing line: " + line + "\n");
-      if (DEBUG) console.error("[DEBUG] JSON parse error:", err.message);
+      if (DEBUG) console.error("[DEBUG] Parse error:", err.message);
     }
   }
 });
-
 
 gpsd.stderr.on("data", (data) => {
   console.error("gpspipe error:", data.toString());
