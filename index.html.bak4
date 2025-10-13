@@ -108,6 +108,7 @@
     osm.addTo(map);
     L.control.layers({ "🌍 OSM": osm, "🌙 Dark": dark, "🛰 Satellite": satellite }).addTo(map);
 
+    // --- Arrow marker ---
     const markerIcon = L.icon({ iconUrl: "/static/icons/arrow-icon.svg", iconSize:[50,50], iconAnchor:[25,25] });
     const marker = L.marker([44.3,15.2], { icon: markerIcon }).addTo(map);
     let lastBearing = 0;
@@ -147,6 +148,7 @@
       return R*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
     };
 
+    // --- Load track ---
     async function loadRawTrack(){
       const today=new Date().toISOString().split("T")[0];
       try{
@@ -169,9 +171,11 @@
     document.getElementById("reloadBtn").addEventListener("click",async()=>{document.getElementById("reloadBtn").textContent="⟳ Loading ...."; await loadRawTrack();});
     await loadRawTrack();
 
+    // --- Record count ---
     async function updateRecordCount(){try{const res=await fetch("/count/raw"); if(!res.ok) return; const data=await res.json(); document.getElementById("recordCount").textContent=data.count.toLocaleString();}catch(err){console.error(err);}}
     await updateRecordCount();
 
+    // --- Live GPS ---
     const socket=io();
     socket.on("gps",gpsData=>{
       const latLng=[gpsData.lat,gpsData.lon];
@@ -202,7 +206,7 @@
     });
     socket.on("raw_count_update",()=>updateRecordCount());
 
-    // --- Target Placement with distance ---
+    // --- Target Placement ---
     let placementMode=false;
     let targetMarker=null;
     let targetLine=null;
@@ -235,18 +239,12 @@
       const currentPos=track[track.length-1];
       const targetPos=[e.latlng.lat,e.latlng.lng];
       const bearing=bearingBetweenPoints(currentPos[0],currentPos[1],targetPos[0],targetPos[1]);
-      const distance=haversineKm(currentPos,targetPos).toFixed(2);
 
       if(targetMarker) map.removeLayer(targetMarker);
       if(targetLine) map.removeLayer(targetLine);
 
       targetMarker=L.marker(targetPos,{
-        icon:L.divIcon({
-          className:'target-marker',
-          html:`<div>&#x25B2; ${bearing.toFixed(0)}°<br>${distance} km</div>`,
-          iconSize:[40,40],
-          iconAnchor:[20,20]
-        })
+        icon:L.divIcon({className:'target-marker',html:`<div>&#x25B2; ${bearing.toFixed(0)}°</div>`,iconSize:[30,30],iconAnchor:[15,15]})
       }).addTo(map);
 
       targetLine=L.polyline([currentPos,targetPos],{color:'blue',weight:2,dashArray:'5,10'}).addTo(map);
