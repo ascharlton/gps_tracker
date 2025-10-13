@@ -73,6 +73,8 @@ app.get("/raw/:date", (req, res) => {
 
 // --- GPSD stream ---
 const gpsd = spawn("gpspipe", ["-w"]);
+const DEBUG = process.argv.includes("DEBUG=1") || process.env.DEBUG === "1";
+
 let lastFixMode = 0;
 let lastAccuracyWarn = false;
 let lastSatInfo = { used: 0, total: 0 };
@@ -83,12 +85,17 @@ gpsd.stdout.on("data", (data) => {
     try {
       const msg = JSON.parse(line);
 
+      // --- Optional full debug output ---
+      if (DEBUG) {
+        console.log("[DEBUG] Raw:", line);
+      }
+
       // --- Handle TPV messages ---
       if (msg.class === "TPV") {
         const mode = msg.mode || 0;
 
         // Detect fix status change
-        if (mode !== lastFixMode) {
+        if (!DEBUG && mode !== lastFixMode) {
           if (mode < 2) {
             console.warn(`[WARN] GPS lost — no fix (mode=${mode})`);
           } else if (mode === 2) {
@@ -110,7 +117,7 @@ gpsd.stdout.on("data", (data) => {
           };
 
           // Check horizontal accuracy
-          if (msg.epx && msg.epy) {
+          if (!DEBUG && msg.epx && msg.epy) {
             const horizAcc = Math.sqrt(msg.epx ** 2 + msg.epy ** 2);
             const lowAccuracy = horizAcc > 10;
             if (lowAccuracy && !lastAccuracyWarn) {
@@ -136,7 +143,7 @@ gpsd.stdout.on("data", (data) => {
       if (msg.class === "SKY" && Array.isArray(msg.satellites)) {
         const used = msg.satellites.filter(s => s.used).length;
         const total = msg.satellites.length;
-        if (used !== lastSatInfo.used || total !== lastSatInfo.total) {
+        if (DEBUG || used !== lastSatInfo.used || total !== lastSatInfo.total) {
           console.log(`[INFO] Satellites: ${used}/${total} in use`);
           lastSatInfo = { used, total };
         }
@@ -144,6 +151,7 @@ gpsd.stdout.on("data", (data) => {
 
     } catch (err) {
       fs.appendFileSync(getRawFilename(), "ERROR parsing line: " + line + "\n");
+      if (DEBUG) console.error("[DEBUG] JSON parse error:", err.message);
     }
   }
 });
