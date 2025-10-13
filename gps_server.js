@@ -73,10 +73,6 @@ app.get("/raw/:date", (req, res) => {
 
 // --- GPSD stream ---
 const gpsd = spawn("gpspipe", ["-w"]);
-let lastFixMode = 0;
-let lastAccuracyWarn = false;
-let lastSatInfo = { used: 0, total: 0 };
-
 gpsd.stdout.on("data", (data) => {
   const lines = data.toString().split("\n").filter(Boolean);
   for (let line of lines) {
@@ -85,22 +81,9 @@ gpsd.stdout.on("data", (data) => {
 
       // --- Handle TPV messages ---
       if (msg.class === "TPV") {
-        const mode = msg.mode || 0;
-
-        // Detect fix status change
-        if (mode !== lastFixMode) {
-          if (mode < 2) {
-            console.warn(`[WARN] GPS lost — no fix (mode=${mode})`);
-          } else if (mode === 2) {
-            console.log(`[INFO] GPS 2D fix acquired`);
-          } else if (mode === 3) {
-            console.log(`[INFO] GPS 3D fix acquired`);
-          }
-          lastFixMode = mode;
-        }
-
-        // If valid fix, process data
-        if (mode >= 2 && msg.lat && msg.lon) {
+        if (msg.mode < 2) {
+          console.warn(`[WARN] No GPS fix (mode=${msg.mode || 0})`);
+        } else {
           const gpsData = {
             lat: msg.lat,
             lon: msg.lon,
@@ -109,37 +92,30 @@ gpsd.stdout.on("data", (data) => {
             time: msg.time || new Date().toISOString(),
           };
 
-          // Check horizontal accuracy
+          // Log accuracy if available
           if (msg.epx && msg.epy) {
             const horizAcc = Math.sqrt(msg.epx ** 2 + msg.epy ** 2);
-            const lowAccuracy = horizAcc > 10;
-            if (lowAccuracy && !lastAccuracyWarn) {
+            if (horizAcc > 10) {
               console.warn(`[WARN] Low accuracy: ±${horizAcc.toFixed(1)} m`);
-              lastAccuracyWarn = true;
-            } else if (!lowAccuracy && lastAccuracyWarn) {
-              console.log(`[INFO] Accuracy restored: ±${horizAcc.toFixed(1)} m`);
-              lastAccuracyWarn = false;
             }
           }
 
-          // Emit and log GPS data
           io.emit("gps", gpsData);
+
           fs.appendFileSync(
             getTrackFilename(),
             `${gpsData.time},${gpsData.lat},${gpsData.lon},${gpsData.speed},${gpsData.track}\n`
           );
+
           fs.appendFileSync(getRawFilename(), line + "\n");
         }
       }
 
-      // --- Handle SKY messages ---
+      // --- Handle SKY messages (optional, satellite count) ---
       if (msg.class === "SKY" && Array.isArray(msg.satellites)) {
         const used = msg.satellites.filter(s => s.used).length;
         const total = msg.satellites.length;
-        if (used !== lastSatInfo.used || total !== lastSatInfo.total) {
-          console.log(`[INFO] Satellites: ${used}/${total} in use`);
-          lastSatInfo = { used, total };
-        }
+        console.log(`[INFO] Satellites: ${used}/${total} in use`);
       }
 
     } catch (err) {
