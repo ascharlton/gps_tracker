@@ -147,17 +147,12 @@
     const TargetControl=L.Control.extend({options:{position:'topright'}, onAdd: map=>{
       const container=L.DomUtil.create('div','leaflet-control-target');
       container.innerHTML='&#x1F3AF;'; container.title="Enable target placement";
-
       L.DomEvent.on(container,'click',e=>{
         L.DomEvent.stopPropagation(e);
         placementMode=!placementMode;
         container.classList.toggle('active',placementMode);
         container.title=placementMode?"Click map to place target":"Enable target placement";
-
-        // --- CURSOR CHANGE ---
-        map.getContainer().style.cursor = placementMode ? 'crosshair' : '';
       });
-
       return container;
     }});
     map.addControl(new TargetControl());
@@ -175,24 +170,12 @@
       const targetPos=[e.latlng.lat,e.latlng.lng];
       const bearing=bearingBetweenPoints(currentPos[0],currentPos[1],targetPos[0],targetPos[1]);
       const distance=haversineKm(currentPos,targetPos).toFixed(2);
-
       if(targetMarker) map.removeLayer(targetMarker);
       if(targetLine) map.removeLayer(targetLine);
-
-      targetMarker=L.marker(targetPos,{icon:L.divIcon({
-        className:'target-marker',
-        html:`<div>&#x25B2; ${bearing.toFixed(0)}°<br>${distance} km</div>`,
-        iconSize:[40,40],
-        iconAnchor:[20,20]
-      })}).addTo(map);
-
+      targetMarker=L.marker(targetPos,{icon:L.divIcon({className:'target-marker', html:`<div>&#x25B2; ${bearing.toFixed(0)}°<br>${distance} km</div>`, iconSize:[40,40], iconAnchor:[20,20]})}).addTo(map);
       targetLine=L.polyline([currentPos,targetPos],{color:'blue',weight:2,dashArray:'5,10'}).addTo(map);
-
       placementMode=false;
       document.querySelector('.leaflet-control-target').classList.remove('active');
-
-      // --- RESTORE CURSOR ---
-      map.getContainer().style.cursor = '';
     });
 
     const socket=io();
