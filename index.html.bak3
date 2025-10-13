@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Offline GPS Tracker (WebSocket)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/leaflet.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+      background: lightgray;
+    }
+
+    #info_distance {
+      position: absolute;
+      top: 10px;
+      left: 60px;
+      background: rgba(255,255,255,0.9);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: sans-serif;
+      z-index: 1000;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+
+    #reloadBtn {
+      position: absolute;
+      top: 10px;
+      left: 200px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+      font-family: sans-serif;
+      cursor: pointer;
+      z-index: 1000;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      transition: background 0.2s;
+    }
+
+    #gpsPanel {
+      position: absolute;
+      top: 10px;
+      left: 325px;
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      z-index: 1000;
+    }
+
+    .gpsBox {
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+      font-family: monospace;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+    }
+
+    .gpsBox .label { color: #333; margin-right: 4px; }
+    .gpsBox .value { font-weight: bold; }
+    .gpsBox .warn { color: darkorange; }
+    .gpsBox .error { color: red; }
+
+    /* Marker rotation with dynamic glow */
+    .rotated-marker {
+  	transition: transform 0.25s linear, filter 0.25s linear;
+  	transform-origin: center center;
+    }
+
+    /* Glow colors for different fix statuses */
+    .glow-nofix { filter: drop-shadow(2px 2px 4px rgba(255,0,0,0.8)); }
+    .glow-2dfix { filter: drop-shadow(2px 2px 4px rgba(255,165,0,0.8)); }
+    .glow-3dfix { filter: drop-shadow(2px 2px 6px rgba(0,255,0,0.8)) drop-shadow(0 0 4px rgba(255,255,255,0.5)); }
+
+
+    .leaflet-control-layers-toggle {
+      background-image: url('/static/icons/globe.png') !important;
+      background-size: 20px 20px;
+      background-repeat: no-repeat;
+      background-position: center;
+      width: 34px !important;
+      height: 34px !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="info_distance">Distance: 0.00 km</div>
+  <button id="reloadBtn" title="Reload track from today's log">↻ Reload Track</button>
+
+  <div id="gpsPanel">
+    <div class="gpsBox"><span class="label">Lat:</span> <span id="lat" class="value">--</span></div>
+    <div class="gpsBox"><span class="label">Lon:</span> <span id="lon" class="value">--</span></div>
+    <div class="gpsBox"><span class="label">Speed:</span> <span id="speed" class="value">--</span> km/h</div>
+    <div class="gpsBox"><span class="label">Bearing:</span> <span id="bearing" class="value">--</span>°</div>
+    <div class="gpsBox"><span class="label">Fix:</span> <span id="fix" class="value warn">No Fix</span></div>
+    <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span> m</div>
+    <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="/static/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <script type="module">
+    const map = L.map('map', { center: [44.3, 15.2], zoom: 12 });
+
+    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { maxZoom: 19, attribution: "OSM" });
+    const dark = L.tileLayer('/tiles_dark/{z}/{x}/{y}.png', { maxZoom: 19, attribution: "Carto" });
+    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { maxZoom: 19, attribution: "Satellite" });
+
+    osm.addTo(map);
+    L.control.layers({
+      "🌍 OSM": osm,
+      "🌙 Dark": dark,
+      "🛰 Satellite": satellite
+    }).addTo(map);
+
+    // --- Marker with bigger size ---
+    const markerIcon = L.icon({
+      iconUrl: "/static/icons/arrow-icon.svg",
+      iconSize: [50, 50],
+      iconAnchor: [25, 25], // center for rotation
+    });
+
+    const marker = L.marker([44.3, 15.2], { icon: markerIcon }).addTo(map);
+
+    let lastBearing = 0;
+    function setMarkerRotation(marker, bearing) {
+      lastBearing = bearing;
+      const icon = marker.getElement();
+      if (!icon) return;
+
+      const transform = icon.style.transform || "";
+      const base = transform.replace(/rotate\(.+?\)/, "");
+      icon.style.transform = `${base} rotate(${bearing}deg)`;
+      icon.classList.add("rotated-marker");
+    }
+
+    // Zoom control
+    const zoomControl = L.control({ position: 'bottomright' });
+    zoomControl.onAdd = function(map) {
+      const div = L.DomUtil.create('div', 'zoom-level-control');
+      div.style.background = 'rgba(255,255,255,0.8)';
+      div.style.padding = '5px 8px';
+      div.style.borderRadius = '4px';
+      div.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+      div.style.fontFamily = 'sans-serif';
+      div.style.fontSize = '14px';
+      div.textContent = `Zoom: ${map.getZoom()}`;
+      return div;
+    };
+    zoomControl.addTo(map);
+    map.on('zoomend', () => {
+      const div = document.querySelector('.zoom-level-control');
+      if (div) div.textContent = `Zoom: ${map.getZoom()}`;
+    });
+
+    const track = [];
+    const polyline = L.polyline(track, { color: 'green' }).addTo(map);
+    let totalDistance = 0;
+
+    const toRad = d => d * Math.PI / 180;
+    const haversineKm = (a, b) => {
+      const R = 6371;
+      const dLat = toRad(b[0] - a[0]);
+      const dLon = toRad(b[1] - a[1]);
+      const lat1 = toRad(a[0]);
+      const lat2 = toRad(b[0]);
+      const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+
+    async function loadRawTrack() {
+      const today = new Date().toISOString().split("T")[0];
+      try {
+        const res = await fetch(`/raw/${today}`);
+        if (!res.ok) return;
+        const points = await res.json();
+        if (!points.length) return;
+
+        track.length = 0;
+        totalDistance = 0;
+        for (const p of points) {
+          const latLng = [p.lat, p.lon];
+          if (track.length > 0) totalDistance += haversineKm(track[track.length - 1], latLng);
+          track.push(latLng);
+        }
+
+        polyline.setLatLngs(track);
+        marker.setLatLng(track[track.length - 1]);
+        map.fitBounds(polyline.getBounds());
+        document.getElementById("info_distance").textContent = `Distance: ${totalDistance.toFixed(2)} km (reloaded from log)`;
+      } catch (err) {
+        console.error("Failed to load raw log:", err);
+      }
+    }
+
+    document.getElementById("reloadBtn").addEventListener("click", async () => {
+      document.getElementById("reloadBtn").textContent = "⟳ Loading ....";
+      await loadRawTrack();
+    });
+
+    await loadRawTrack();
+
+    async function updateRecordCount() {
+      try {
+        const res = await fetch("/count/raw");
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("recordCount").textContent = data.count.toLocaleString();
+      } catch (err) {
+        console.error("Failed to get record count:", err);
+      }
+    }
+    await updateRecordCount();
+
+    const socket = io();
+    socket.on("gps", (gpsData) => {
+      const latLng = [gpsData.lat, gpsData.lon];
+      marker.setLatLng(latLng);
+      map.panTo(latLng);
+
+      if (track.length > 0) totalDistance += haversineKm(track[track.length - 1], latLng);
+      track.push(latLng);
+      polyline.setLatLngs(track);
+      document.getElementById("info_distance").textContent = `Distance: ${totalDistance.toFixed(2)} km`;
+
+      document.getElementById("lat").textContent = gpsData.lat.toFixed(8);
+      document.getElementById("lon").textContent = gpsData.lon.toFixed(8);
+      document.getElementById("speed").textContent = (gpsData.speed * 3.6).toFixed(1);
+      document.getElementById("bearing").textContent = gpsData.track ? gpsData.track.toFixed(1) : "--";
+      document.getElementById("accuracy").textContent = gpsData.accuracy ? gpsData.accuracy.toFixed(1) : "--";
+
+      const fixEl = document.getElementById("fix");
+      const fixMode = Number(gpsData.fix_mode);
+      if (fixMode === 3) {
+        fixEl.textContent = "3D Fix"; fixEl.className = "value";
+      } else if (fixMode === 2) {
+        fixEl.textContent = "2D Fix"; fixEl.className = "value warn";
+      } else {
+        fixEl.textContent = "No Fix"; fixEl.className = "value error";
+      }
+
+      // Rotate marker and set glow dynamically
+      if (gpsData.track !== undefined && !isNaN(gpsData.track)) {
+  	setMarkerRotation(marker, gpsData.track);
+
+  	const icon = marker.getElement();
+  	if (icon) {
+    		icon.classList.remove("glow-nofix", "glow-2dfix", "glow-3dfix");
+
+    		if (fixMode === 3) icon.classList.add("glow-3dfix");
+    	else if (fixMode === 2) icon.classList.add("glow-2dfix");
+    	else icon.classList.add("glow-nofix");
+  	}
+      }
+    });
+
+    socket.on("raw_count_update", () => updateRecordCount());
+  </script>
+</body>
+</html>
+
