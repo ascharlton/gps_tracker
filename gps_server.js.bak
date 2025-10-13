@@ -14,7 +14,7 @@ const PORT = 5000;
 const LOG_DIR = path.join(__dirname, "logs");
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
 
-// Serve static files
+// Serve static files (map, leaflet, icons, tiles, etc.)
 app.use("/static", express.static(path.join(__dirname, "static")));
 app.use("/tiles_osm", express.static(path.join(__dirname, "tiles_osm")));
 app.use("/tiles_satellite", express.static(path.join(__dirname, "tiles_satellite")));
@@ -22,11 +22,11 @@ app.use("/tiles_satellite", express.static(path.join(__dirname, "tiles_satellite
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
-app.get("/favicon.ico", (req, res) => {
-  res.sendFile(path.join(__dirname, "static", "favicon.ico"));
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static', 'favicon.ico'));
 });
 
-// --- Daily filenames ---
+// --- Daily track + raw log filenames ---
 function getDateString() {
   return new Date().toISOString().split("T")[0];
 }
@@ -37,37 +37,11 @@ function getRawFilename() {
   return path.join(LOG_DIR, `raw_${getDateString()}.log`);
 }
 
-// --- Track endpoint ---
+// Track endpoint (review past tracks)
 app.get("/track/:date", (req, res) => {
   const filename = path.join(LOG_DIR, `track_${req.params.date}.csv`);
   if (fs.existsSync(filename)) res.sendFile(filename);
   else res.status(404).send("Track file not found");
-});
-
-// --- Raw log endpoint ---
-app.get("/raw/:date", (req, res) => {
-  const filename = path.join(LOG_DIR, `raw_${req.params.date}.log`);
-  if (!fs.existsSync(filename)) return res.json([]);
-
-  const lines = fs.readFileSync(filename, "utf8").split("\n").filter(Boolean);
-  const points = [];
-  for (let line of lines) {
-    try {
-      const msg = JSON.parse(line);
-      if (msg.class === "TPV" && msg.lat && msg.lon) {
-        points.push({
-          lat: msg.lat,
-          lon: msg.lon,
-          speed: msg.speed || 0,
-          track: msg.track || 0,
-          time: msg.time || new Date().toISOString(),
-        });
-      }
-    } catch {
-      // Ignore malformed lines
-    }
-  }
-  res.json(points);
 });
 
 // --- GPSD stream ---
@@ -86,14 +60,18 @@ gpsd.stdout.on("data", (data) => {
           time: msg.time || new Date().toISOString(),
         };
 
+        // --- Broadcast via WebSocket ---
         io.emit("gps", gpsData);
 
+        // --- Append to daily track ---
         fs.appendFileSync(
           getTrackFilename(),
           `${gpsData.time},${gpsData.lat},${gpsData.lon},${gpsData.speed},${gpsData.track}\n`
         );
 
+        // --- Raw log ---
         fs.appendFileSync(getRawFilename(), line + "\n");
+	console.log("printed to raw log");
       }
     } catch (err) {
       fs.appendFileSync(getRawFilename(), "ERROR parsing line: " + line + "\n");

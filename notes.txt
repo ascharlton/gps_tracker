@@ -41,9 +41,11 @@ TODO:
 
 2. Show when the error rate is high at the gps input - show a red circle showing accuracy is low
 
-3. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load
+3. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load, labelling by date, query all dates if needed
 
 4. Use a dot instead of the default icon
 
-5. 
+5. use Postgres instead of physical files for faster queries 
+
+6. Add a control to allow viewing real time gps data scrolling at bottom
 
