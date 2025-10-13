@@ -32,6 +32,7 @@ pool.connect()
 app.use("/static", express.static(path.join(__dirname, "static")));
 app.use("/tiles_osm", express.static(path.join(__dirname, "tiles_osm")));
 app.use("/tiles_satellite", express.static(path.join(__dirname, "tiles_satellite")));
+app.use("/tiles_dark", express.static(path.join(__dirname, "tiles_dark")));
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
@@ -85,6 +86,18 @@ app.get("/track/:date", async (req, res) => {
   }
 });
 
+
+// --- get gps_raw record count ---
+app.get("/count/raw", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT COUNT(*) FROM gps_raw");
+    res.json({ count: Number(rows[0].count) });
+  } catch (err) {
+    console.error("[ERROR] /count/raw failed:", err.message);
+    res.status(500).json({ error: "DB query failed" });
+  }
+});
+
 // --- GPSD live stream ---
 const gpsd = spawn("gpspipe", ["-w"]);
 
@@ -105,6 +118,8 @@ gpsd.stdout.on("data", async (data) => {
         "INSERT INTO gps_raw (message) VALUES ($1)",
         [msg]
       );
+      // Notify clients that a new record was added
+      io.emit("raw_count_update");
 
       // --- Handle TPV messages ---
       if (msg.class === "TPV") {
@@ -154,13 +169,15 @@ gpsd.stdout.on("data", async (data) => {
 
           // Emit live data to web client
           io.emit("gps", {
-            lat: msg.lat,
-            lon: msg.lon,
-            speed: msg.speed || 0,
-            track: msg.track || 0,
-            time: msg.time || new Date().toISOString(),
-          });
-        }
+  	    lat: Number(msg.lat.toFixed(8)),  // 8 decimal places (~1 cm precision)
+  	    lon: Number(msg.lon.toFixed(8)),
+  	    speed: msg.speed || 0,
+  	    track: msg.track || 0,
+  	    time: msg.time || new Date().toISOString(),
+	    fix_mode: msg.mode || 0,
+	    accuracy: horizAcc
+	  });
+	}
       }
 
       // --- Handle SKY messages ---

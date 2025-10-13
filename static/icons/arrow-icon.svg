@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Single upward-pointing arrowhead -->
+  <!-- <polygon points="32,4 44,28 32,22 20,28" fill="#007bff" stroke="#004a99" stroke-width="2"/> -->
+  <polygon points="32,1 48,48 32,32 16,48" fill="#FF7b33" stroke="#ffffff" stroke-width="1"/>
+</svg>
+

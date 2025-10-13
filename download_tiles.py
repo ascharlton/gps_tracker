@@ -9,7 +9,8 @@ from tqdm import tqdm
 # Default tile URLs
 TILE_URLS = {
     "osm": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    "satellite": "http://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}"
+    "satellite": "http://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}",
+    "dark": "http://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
 }
 #"satellite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 
@@ -76,7 +77,7 @@ def insert_tile(conn, z, x, y, tile_path):
 def download_tiles(min_lat, min_lon, max_lat, max_lon, zoom_levels, tile_type, output_dir=None, mbtiles=None):
     # Choose folder names compatible with your Flask setup
     if not output_dir:
-        output_dir = f"tiles_{tile_type}"  # tiles_osm or tiles_satellite
+        output_dir = f"tiles_{tile_type}"  # tiles_osm or tiles_satellite or dark
     os.makedirs(output_dir, exist_ok=True)
 
     tile_url_template = TILE_URLS[tile_type]
@@ -110,8 +111,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Offline Tile Downloader")
     parser.add_argument("--bbox", nargs=4, type=float, metavar=('MIN_LAT', 'MIN_LON', 'MAX_LAT', 'MAX_LON'), required=True, help="Bounding box")
     parser.add_argument("--zoom", nargs="+", type=int, required=True, help="Zoom levels (e.g. 14 15 16)")
-    parser.add_argument("--type", choices=["osm", "satellite"], default="osm", help="Tile source (osm or satellite)")
-    parser.add_argument("--output", help="Directory to save tiles (default: tiles_osm or tiles_satellite)")
+    parser.add_argument("--type", choices=["osm", "satellite", "dark"], default="osm", help="Tile source (osm or satellite or dark)")
+    parser.add_argument("--output", help="Directory to save tiles (default: tiles_osm or tiles_satellite or tiles_dark)")
     parser.add_argument("--mbtiles", help="Optional MBTiles output file")
     args = parser.parse_args()
 
