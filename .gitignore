@@ -2,7 +2,7 @@ raw_gps_log*.json
 track.csv
 tiles/
 tiles_osm/
-tiles_sat/
+tiles_dark/
 tiles_satellite/
 node_modules/
 tracks/
