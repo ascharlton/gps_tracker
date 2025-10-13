@@ -68,8 +68,34 @@
   });
 
   const marker = L.marker([44.3, 15.2], { icon: markerIcon }).addTo(map);
+
+  // Custom control to show zoom level
+  const zoomControl = L.control({ position: 'bottomright' });
+
+  zoomControl.onAdd = function(map) {
+    const div = L.DomUtil.create('div', 'zoom-level-control');
+    div.style.background = 'rgba(255,255,255,0.8)';
+    div.style.padding = '4px 8px';
+    div.style.borderRadius = '4px';
+    div.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+    div.style.fontFamily = 'sans-serif';
+    div.style.fontSize = '14px';
+    div.textContent = `Zoom: ${map.getZoom()}`;
+    return div;
+  };
+
+  zoomControl.addTo(map);
+
+  // Update the zoom display whenever the user zooms
+  map.on('zoomend', () => {
+    const div = document.querySelector('.zoom-level-control');
+    if (div) div.textContent = `Zoom: ${map.getZoom()}`;
+  });
+
+
   const track = [];
-  const polyline = L.polyline(track, { color: 'red' }).addTo(map);
+  const polyline = L.polyline(track, { color: 'green' }).addTo(map);
+
   let totalDistance = 0;
 
   const toRad = d => d * Math.PI / 180;
@@ -101,8 +127,7 @@
       polyline.setLatLngs(track);
       marker.setLatLng(track[track.length - 1]);
       map.fitBounds(polyline.getBounds());
-      document.getElementById("info").textContent =
-        `Distance: ${totalDistance.toFixed(2)} km (reloaded from log)`;
+      document.getElementById("info").textContent = `Distance: ${totalDistance.toFixed(2)} km (reloaded from log)`;
     } catch (err) {
       console.error("Failed to load raw log:", err);
     }

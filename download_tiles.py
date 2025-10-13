@@ -9,8 +9,10 @@ from tqdm import tqdm
 # Default tile URLs
 TILE_URLS = {
     "osm": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    "satellite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    "satellite": "http://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}"
 }
+#"satellite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+
 HEADERS = {"User-Agent": "Mozilla/5.0 (Raspberry Pi; Offline Tile Downloader)"}
 
 def deg2num(lat_deg, lon_deg, zoom):
