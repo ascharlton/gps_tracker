@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Offline GPS Tracker (WebSocket + Multi-Path)</title>
+  <title>Offline GPS Tracker (WebSocket + Target & Multi-Path)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/leaflet.css" />
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -52,17 +52,17 @@
       background-position: center; width: 34px !important; height: 34px !important;
     }
 
-    .leaflet-control-path {
+    .leaflet-control-target, .leaflet-control-path {
       background-color: rgba(255,255,255,0.9); width: 36px; height: 36px;
       border-radius: 4px; text-align: center; line-height: 34px;
       cursor: pointer; font-size: 20px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.3); margin-top: 4px;
     }
-    .leaflet-control-path.active {
+    .leaflet-control-target.active, .leaflet-control-path.active {
       background-color: #4CAF50; color: white;
     }
 
-    .path-marker div {
+    .target-marker div, .path-marker div {
       font-size: 20px; font-weight: bold; color: blue;
       text-align: center;
     }
@@ -100,7 +100,6 @@
 
     const markerIcon = L.icon({ iconUrl: "/static/icons/arrow-icon.svg", iconSize:[50,50], iconAnchor:[25,25] });
     const marker = L.marker([44.3,15.2], { icon: markerIcon }).addTo(map);
-
     let lastBearing = 0;
     function setMarkerRotation(marker,bearing){
       lastBearing=bearing;
@@ -146,8 +145,9 @@
     async function updateRecordCount(){try{const res=await fetch("/count/raw"); if(!res.ok) return; const data=await res.json(); document.getElementById("recordCount").textContent=data.count.toLocaleString();}catch(err){console.error(err);}}
     await updateRecordCount();
 
-    // --- Multi-path placement ---
-    let pathMode=false;
+    // --- Placement modes ---
+    let placementMode=false, pathMode=false;
+    let targetMarker=null, targetLine=null;
     let pathMarkers=[], pathLines=[];
 
     function clearPath(){
@@ -163,13 +163,30 @@
       return (Math.atan2(y,x)*180/Math.PI+360)%360;
     }
 
+    // --- Target placement button ---
+    const TargetControl=L.Control.extend({options:{position:'topright'}, onAdd: map=>{
+      const container=L.DomUtil.create('div','leaflet-control-target');
+      container.innerHTML='&#x1F3AF;'; container.title="Enable target placement";
+      L.DomEvent.on(container,'click',e=>{
+        L.DomEvent.stopPropagation(e);
+        placementMode=!placementMode;
+        if(placementMode){ pathMode=false; document.querySelector('.leaflet-control-path')?.classList.remove('active'); }
+        container.classList.toggle('active',placementMode);
+        container.title=placementMode?"Click map to place target":"Enable target placement";
+        map.getContainer().classList.toggle('crosshair-cursor', placementMode);
+      });
+      return container;
+    }});
+    map.addControl(new TargetControl());
+
+    // --- Multi-path placement button ---
     const PathControl=L.Control.extend({options:{position:'topright'}, onAdd: map=>{
       const container=L.DomUtil.create('div','leaflet-control-path');
       container.innerHTML='&#x1F4C8;'; container.title="Enable multi-path placement";
       L.DomEvent.on(container,'click',e=>{
         L.DomEvent.stopPropagation(e);
         pathMode=!pathMode;
-        if(pathMode){ clearPath(); }
+        if(pathMode){ placementMode=false; targetMarker?.remove(); targetLine?.remove(); document.querySelector('.leaflet-control-target')?.classList.remove('active'); clearPath(); }
         container.classList.toggle('active',pathMode);
         container.title=pathMode?"Click map to place path points":"Enable multi-path placement";
         map.getContainer().classList.toggle('crosshair-cursor', pathMode);
@@ -179,9 +196,20 @@
     map.addControl(new PathControl());
 
     map.on('click',e=>{
-      if(pathMode){
+      const currentPos = track.length ? track[track.length-1] : null;
+      if(placementMode && currentPos){
+        const targetPos=[e.latlng.lat,e.latlng.lng];
+        const bearing=bearingBetweenPoints(currentPos[0],currentPos[1],targetPos[0],targetPos[1]);
+        const distance=haversineKm(currentPos,targetPos).toFixed(2);
+        if(targetMarker) map.removeLayer(targetMarker);
+        if(targetLine) map.removeLayer(targetLine);
+        targetMarker=L.marker(targetPos,{icon:L.divIcon({className:'target-marker', html:`<div>&#x25B2; ${bearing.toFixed(0)}°<br>${distance} km</div>`, iconSize:[40,40], iconAnchor:[20,20]})}).addTo(map);
+        targetLine=L.polyline([currentPos,targetPos],{color:'blue',weight:2,dashArray:'5,10'}).addTo(map);
+        placementMode=false;
+        map.getContainer().classList.remove('crosshair-cursor');
+        document.querySelector('.leaflet-control-target').classList.remove('active');
+      } else if(pathMode){
         const point=[e.latlng.lat,e.latlng.lng];
-        const currentPos = track.length ? track[track.length-1] : null;
         const prevPoint = pathMarkers.length ? [pathMarkers[pathMarkers.length-1].getLatLng().lat,pathMarkers[pathMarkers.length-1].getLatLng().lng] : currentPos;
         const bearing=prevPoint ? bearingBetweenPoints(prevPoint[0],prevPoint[1],point[0],point[1]) : 0;
         const distance = prevPoint ? haversineKm(prevPoint,point).toFixed(2) : 0;
@@ -194,7 +222,7 @@
       }
     });
 
-    map.on('contextmenu dblclick',()=>{
+    map.on('contextmenu dblclick',e=>{
       if(pathMode){
         pathMode=false;
         map.getContainer().classList.remove('crosshair-cursor');
@@ -227,6 +255,19 @@
         if(fixMode===3) icon.classList.add("glow-3dfix");
         else if(fixMode===2) icon.classList.add("glow-2dfix");
         else icon.classList.add("glow-nofix");
+      }
+
+      // --- Update live distance to target ---
+      if(targetMarker && targetLine){
+        const targetPos=[targetMarker.getLatLng().lat,targetMarker.getLatLng().lng];
+        const distance=haversineKm(latLng,targetPos).toFixed(2);
+        const bearing=bearingBetweenPoints(latLng[0],latLng[1],targetPos[0],targetPos[1]);
+        targetMarker.setIcon(L.divIcon({
+          className:'target-marker',
+          html:`<div>&#x25B2; ${bearing.toFixed(0)}°<br>${distance} km</div>`,
+          iconSize:[40,40], iconAnchor:[20,20]
+        }));
+        targetLine.setLatLngs([latLng,targetPos]);
       }
 
       // --- Update multi-path first segment if applicable ---
