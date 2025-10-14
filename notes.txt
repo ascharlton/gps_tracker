@@ -27,6 +27,60 @@ python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type satellite
 
 # real close:
 python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 18 19 --type satellite
+ # useful extents:
+python3 download_tiles.py --bbox 80 -160 -80 160 --zoom 3 --type dark 
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 4 --type dark
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 5 --type dark
+python3 download_tiles.py --bbox 50 -30 0 60 --zoom 6 --type dark
+python3 download_tiles.py --bbox 50 -10 20 30 --zoom 7 --type dark
+python3 download_tiles.py --bbox 48 0 30 30 --zoom 8 --type dark
+python3 download_tiles.py --bbox 46 10 20 20 --zoom 9 --type dark
+python3 download_tiles.py --bbox 45 10 40 20 --zoom 10 --type dark
+python3 download_tiles.py --bbox 45 12 43 16 --zoom 11 --type dark
+python3 download_tiles.py --bbox 45 14 43 16 --zoom 12 --type dark
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 13 --type dark
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 14 --type dark
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 15 --type dark
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 16 --type dark
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 17 --type dark
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 18 --type dark
+python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 19 --type dark
+
+python3 download_tiles.py --bbox 80 -160 -80 160 --zoom 3 --type osm
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 4 --type osm
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 5 --type osm
+python3 download_tiles.py --bbox 50 -30 0 60 --zoom 6 --type osm
+python3 download_tiles.py --bbox 50 -10 20 30 --zoom 7 --type osm
+python3 download_tiles.py --bbox 48 0 30 30 --zoom 8 --type osm
+python3 download_tiles.py --bbox 46 10 20 20 --zoom 9 --type osm
+python3 download_tiles.py --bbox 45 10 40 20 --zoom 10 --type osm
+python3 download_tiles.py --bbox 45 12 43 16 --zoom 11 --type osm
+python3 download_tiles.py --bbox 45 14 43 16 --zoom 12 --type osm
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 13 --type osm
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 14 --type osm
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 15 --type osm
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 16 --type osm
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 17 --type osm
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 18 --type osm
+python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 19 --type osm
+
+python3 download_tiles.py --bbox 80 -160 -80 160 --zoom 3 --type satellite
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 4 --type satellite
+python3 download_tiles.py --bbox 80 -50 0 80 --zoom 5 --type satellite
+python3 download_tiles.py --bbox 50 -30 0 60 --zoom 6 --type satellite
+python3 download_tiles.py --bbox 50 -10 20 30 --zoom 7 --type satellite
+python3 download_tiles.py --bbox 48 0 30 30 --zoom 8 --type satellite
+python3 download_tiles.py --bbox 46 10 20 20 --zoom 9 --type satellite
+python3 download_tiles.py --bbox 45 10 40 20 --zoom 10 --type satellite
+python3 download_tiles.py --bbox 45 12 43 16 --zoom 11 --type satellite
+python3 download_tiles.py --bbox 45 14 43 16 --zoom 12 --type satellite
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 13 --type satellite
+python3 download_tiles.py --bbox 44.5 15 44 15.5 --zoom 14 --type satellite
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 15 --type satellite
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 16 --type satellite
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 17 --type satellite
+python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 18 --type satellite
+python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 19 --type satellite
 
 
 (wait for a long time)

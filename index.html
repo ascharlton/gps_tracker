@@ -102,9 +102,9 @@
 
   <script type="module">
     const map = L.map('map', { center: [44.3, 15.2], zoom: 12 });
-    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { maxZoom: 19 });
-    const dark = L.tileLayer('/tiles_dark/{z}/{x}/{y}.png', { maxZoom: 19 });
-    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { maxZoom: 19 });
+    const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
+    const dark = L.tileLayer('/tiles_dark/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
+    const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
     osm.addTo(map);
     L.control.layers({ "🌍 OSM": osm, "🌙 Dark": dark, "🛰 Satellite": satellite }).addTo(map);
 
