@@ -209,6 +209,7 @@ function startGpsPipe() {
             console.log(`[INFO] Satellites: ${used}/${total} in use`);
             lastSatInfo = { used, total };
           }
+	  io.emit("satellite_update", lastSatInfo);
         }
 
       } catch (err) {

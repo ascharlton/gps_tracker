@@ -93,6 +93,7 @@
     <div class="gpsBox"><span class="label">Fix:</span> <span id="fix" class="value warn">No Fix</span></div>
     <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span> m</div>
     <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
+    <div class="gpsBox"><span class="label">Satellites:</span> <span id="sats" class="value">--</span></div>
   </div>
 
   <div id="map"></div>
@@ -316,6 +317,10 @@ map.on('click', e => {
         else if(fixMode===2) icon.classList.add("glow-2dfix");
         else icon.classList.add("glow-nofix");
       }
+    });
+
+    socket.on("satellite_update", sat => {
+  	document.getElementById("sats").textContent = `${sat.used}/${sat.total}`;
     });
     socket.on("raw_count_update",updateRecordCount);
   </script>
