@@ -18,7 +18,6 @@ The IP connection is provided when the usb port is initialized when the camera r
 
 #Chrome loads at startup on the localhost:5000 (gps_tracker)
 
-
 TLDR;
 
 python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type osm
@@ -82,33 +81,20 @@ python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.243848
 python3 download_tiles.py --bbox 44.266193833415805 15.180196799948353 44.24384803273263 15.242595851621535 --zoom 18 --type satellite
 python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 19 --type satellite
 
-
-(wait for a long time)
-cd gps_server/
-node gps_server.js
+cd repos/gps_server/
+node gps_server.js or pm2 start gps_server
 http://localhost:5000
+postgres can be accessed with psql
+\c gps_tracker
+\dt
+select * from gps_raw
+# to remove raw records
+truncate gps_raw
 
 
 TODO:
 
-1. the browser only updates if it is in focus, online, running in foreground etc. Possibly use a more regular storage to plot the tracks. Plot the days tracks from a persistant storage - flush or overwrite a temp log file that is a record of the gps positions captured since start.
+1. Show when the error rate is high at the gps input - show a red circle showing accuracy is low
 
-2. Show when the error rate is high at the gps input - show a red circle showing accuracy is low
-
-3. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load, labelling by date, query all dates if needed
-
-4. Use a dot instead of the default icon
-
-5. use Postgres instead of physical files for faster queries 
-
-6. Add a control to allow viewing real time gps data scrolling at bottom
-
-7. Add number of satellites, speed and bearing next to distance travelled
-from here: 
-gps_tracker=# select * from gps_points order by id desc limit 1;
- id  |       timestamp        |    lat     |    lon     | speed |  track   |     accuracy      | fix_mode
------+------------------------+------------+------------+-------+----------+-------------------+----------
- 540 | 2025-10-13 13:14:25+02 | 44.2528605 | 15.2111875 | 0.008 | 113.6553 | 8.085721241794081 |        3
-
-8. When you stop gpsd adn then restart it the gps_server.js script hangs without logging any gps data.
+2. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load, labelling by date, query all dates if needed
 
