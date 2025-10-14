@@ -26,7 +26,7 @@ python3 download_tiles.py --bbox 44 15 43 16 --zoom 12 13 --type satellite
 
 
 # real close:
-python3 download_tiles.py --bbox 44.25500661753673, 15.207463630898317 44.251247489149826, 15.21450212044336 --zoom 18 19 --type satellite
+python3 download_tiles.py --bbox 44.25500661753673 15.207463630898317 44.251247489149826 15.21450212044336 --zoom 18 19 --type satellite
 
 
 (wait for a long time)

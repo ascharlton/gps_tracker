@@ -239,21 +239,47 @@
       return (Math.atan2(y,x)*180/Math.PI+360)%360;
     }
 
-    map.on('click',e=>{
-      if(pathMode){
-        const point=[e.latlng.lat,e.latlng.lng];
-        const currentPos=track.length?track[track.length-1]:null;
-        const prevPoint=pathMarkers.length?[pathMarkers[pathMarkers.length-1].getLatLng().lat,pathMarkers[pathMarkers.length-1].getLatLng().lng]:currentPos;
-        const bearing=prevPoint?bearingBetweenPoints(prevPoint[0],prevPoint[1],point[0],point[1]):0;
-        const distance=prevPoint?haversineKm(prevPoint,point).toFixed(2):0;
-        const m=L.marker(point,{icon:L.divIcon({className:'path-marker',html:`<div>${bearing.toFixed(0)}°<br>${distance} km</div>`,iconSize:[40,40],iconAnchor:[20,20]})}).addTo(map);
-        pathMarkers.push(m);
-        if(prevPoint){
-          const line=L.polyline([prevPoint,point],{color:'blue',weight:2,dashArray:'5,5'}).addTo(map);
-          pathLines.push(line);
-        }
-      }
-    });
+map.on('click', e => {
+  if (pathMode) {
+    const point = [e.latlng.lat, e.latlng.lng];
+    const currentPos = track.length ? track[track.length - 1] : null;
+    const prevPoint = pathMarkers.length
+      ? [pathMarkers[pathMarkers.length - 1].getLatLng().lat, pathMarkers[pathMarkers.length - 1].getLatLng().lng]
+      : currentPos;
+
+    const bearing = prevPoint ? bearingBetweenPoints(prevPoint[0], prevPoint[1], point[0], point[1]) : 0;
+    const distance = prevPoint ? haversineKm(prevPoint, point).toFixed(2) : 0;
+
+    // Format coordinates
+    const latStr = point[0].toFixed(6);
+    const lonStr = point[1].toFixed(6);
+
+    // Create marker label with bearing, distance, and coordinates
+    const labelHTML = `
+      <div style="font-size:14px;text-align:center;">
+        <strong>${bearing.toFixed(0)}°</strong>  ${distance} km<br>
+        <span style="font-size:14px;color:blue;">${latStr}, ${lonStr}</span>
+      </div>`;
+
+    const m = L.marker(point, {
+      icon: L.divIcon({
+        className: 'path-marker',
+        html: labelHTML,
+        iconSize: [180, 180],
+        iconAnchor: [40, 25],
+      })
+    }).addTo(map);
+
+    pathMarkers.push(m);
+
+    // Draw line between previous and current
+    if (prevPoint) {
+      const line = L.polyline([prevPoint, point], { color: 'blue', weight: 2, dashArray: '5,5' }).addTo(map);
+      pathLines.push(line);
+    }
+  }
+});
+
 
     map.on('contextmenu dblclick',()=>{
       if(pathMode){
