@@ -12,69 +12,35 @@
     #map { height: 100vh; width: 100%; background: lightgray; }
 
     /* info panels */
-
-    /* Collapsible GPS Info Panel */
-#gpsInfoContainer {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  z-index: 1000;
-  font-family: sans-serif;
-}
-
-/* Toggle button */
-#gpsToggleBtn {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
-
-/* Panel box */
-#gpsInfoPanel {
-  display: none; /* hidden by default */
-  margin-top: 8px;
-  background: rgba(255,255,255,0.95);
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.3);
-  width: 260px;
-  backdrop-filter: blur(3px);
-}
-
-/* GPS boxes inside panel */
-.gpsBox {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 13px;
-  font-family: monospace;
-  margin-bottom: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.gpsBox:last-child { margin-bottom: 0; }
-.gpsBox .label { color: #333; margin-right: 4px; }
-.gpsBox .warn { color: darkorange; }
-.gpsBox .error { color: red; }
-
-/* Buttons inside panel */
-#reloadBtn {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
-  width: 100%;
-  cursor: pointer;
-  margin-bottom: 6px;
-}
+    #info_distance {
+      position: absolute; top: 10px; left: 60px;
+      background: rgba(255,255,255,0.9);
+      padding: 6px 10px; border-radius: 6px;
+      font-size: 14px; font-family: sans-serif;
+      z-index: 1000; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    #reloadBtn {
+      position: absolute; top: 10px; left: 200px;
+      background: rgba(255,255,255,0.9); border: 1px solid #ccc;
+      border-radius: 6px; padding: 6px 10px;
+      font-size: 14px; font-family: sans-serif;
+      cursor: pointer; z-index: 1000; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    #gpsPanel {
+      position: absolute; top: 10px; left: 325px;
+      display: flex; flex-direction: row; gap: 8px; z-index: 1000;
+    }
+    .gpsBox {
+      background: rgba(255,255,255,0.9); border: 1px solid #ccc;
+      border-radius: 6px; padding: 6px 10px;
+      font-size: 14px; font-family: monospace;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      display: flex; align-items: center;
+    }
+    .gpsBox .label { color: #333; margin-right: 4px; }
+    .gpsBox .value { font-weight: bold; }
+    .gpsBox .warn { color: darkorange; }
+    .gpsBox .error { color: red; }
 
     /* markers and icons */
     .rotated-marker {
@@ -117,11 +83,9 @@
 </head>
 
 <body>
-<div id="gpsInfoContainer">
-  <button id="gpsToggleBtn">📡 GPS Info</button>
-  <div id="gpsInfoPanel">
-    <button id="reloadBtn" title="Reload track from today's log">↻ Reload Track</button>
-    <div class="gpsBox" id="info_distance"><span class="label">Distance:</span> <span class="value"> 0.00 km</span></div>
+  <div id="info_distance">Distance: 0.00 km</div>
+  <button id="reloadBtn" title="Reload track from today's log">↻ Reload Track</button>
+  <div id="gpsPanel">
     <div class="gpsBox"><span class="label">Lat:</span> <span id="lat" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Lon:</span> <span id="lon" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Speed:</span> <span id="speed" class="value">--</span> km/h</div>
@@ -131,7 +95,6 @@
     <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Satellites:</span> <span id="sats" class="value">--</span></div>
   </div>
-</div>
 
   <div id="map"></div>
 
@@ -360,15 +323,6 @@ map.on('click', e => {
   	document.getElementById("sats").textContent = `${sat.used}/${sat.total}`;
     });
     socket.on("raw_count_update",updateRecordCount);
-
-
-    // Toggle GPS info panel
-    document.getElementById("gpsToggleBtn").addEventListener("click", () => {
-    	const panel = document.getElementById("gpsInfoPanel");
-   	panel.style.display = panel.style.display === "none" || !panel.style.display ? "block" : "none";
-    });
-
-
   </script>
 </body>
 </html>
