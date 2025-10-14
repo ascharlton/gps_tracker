@@ -130,9 +130,6 @@ app.get("/count/raw", async (req, res) => {
 
 // --- GPSD live stream with auto-reconnect ---
 let gpsd = null;
-let lastFixMode = 0;
-let lastAccuracyWarn = false;
-let lastSatInfo = { used: 0, total: 0 };
 
 function startGpsPipe() {
   console.log("[INFO] Starting gpspipe...");
@@ -140,7 +137,6 @@ function startGpsPipe() {
 
   gpsd.stdout.on("data", async (data) => {
     const lines = data.toString().split("\n").filter(Boolean);
-
     for (let line of lines) {
       try {
         const msg = JSON.parse(line);
@@ -176,18 +172,6 @@ function startGpsPipe() {
                 msg.mode,
               ]
             );
-
-	    // Accuracy monitoring CHECK if NEEDED
-            if (!DEBUG && horizAcc) {
-            	const lowAccuracy = horizAcc > 10;
-            	if (lowAccuracy && !lastAccuracyWarn) {
-              		console.warn(`[WARN] Low accuracy: ±${horizAcc.toFixed(1)} m`);
-              		lastAccuracyWarn = true;
-            	} else if (!lowAccuracy && lastAccuracyWarn) {
-              		console.log(`[INFO] Accuracy restored: ±${horizAcc.toFixed(1)} m`);
-              		lastAccuracyWarn = false;
-            	}
-            }
 
             io.emit("gps", {
               lat: Number(msg.lat.toFixed(8)),
@@ -230,6 +214,10 @@ function startGpsPipe() {
 // Start the GPS pipe process
 startGpsPipe();
 
+
+gpsd.stderr.on("data", (data) => {
+  console.error("gpspipe error:", data.toString());
+});
 
 // --- Start server ---
 server.listen(PORT, "0.0.0.0", () => {
