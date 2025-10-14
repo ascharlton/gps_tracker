@@ -86,6 +86,33 @@ app.get("/track/:date", async (req, res) => {
   }
 });
 
+// --- Waypoints API ---
+app.get("/waypoints", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT id, remarks, lat, lon FROM gps_waypoints ORDER BY id ASC");
+    res.json(rows);
+  } catch (err) {
+    console.error("[ERROR] /waypoints failed:", err.message);
+    res.status(500).json({ error: "DB query failed" });
+  }
+});
+
+app.post("/waypoints", express.json(), async (req, res) => {
+  try {
+    const { remarks, lat, lon, description } = req.body;
+    if (!lat || !lon) return res.status(400).json({ error: "lat/lon required" });
+    await pool.query(
+      "INSERT INTO gps_waypoints (remarks, lat, lon) VALUES ($1, $2, $3)",
+      [remarks || "Waypoint", lat, lon || null]
+    );
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("[ERROR] /waypoints POST failed:", err.message);
+    res.status(500).json({ error: "DB query failed" });
+  }
+});
+
+
 
 // --- get gps_raw record count ---
 app.get("/count/raw", async (req, res) => {
