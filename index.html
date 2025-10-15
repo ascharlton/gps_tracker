@@ -60,9 +60,20 @@
   align-items: center;
 }
 .gpsBox:last-child { margin-bottom: 0; }
-.gpsBox .label { color: #333; margin-right: 4px; }
+.gpsBox .label { color: #333; text-align: left; flex: 1; margin-right: 4px; }
 .gpsBox .warn { color: darkorange; }
 .gpsBox .error { color: red; }
+
+/*.gpsBox .label {
+  text-align: left;
+  flex: 1;
+}*/
+
+.gpsBox .value {
+  text-align: right;
+  flex: 1;
+  font-weight: bold;
+}
 
 /* Buttons inside panel */
 #reloadBtn {
@@ -124,10 +135,10 @@
     <div class="gpsBox" id="info_distance"><span class="label">Distance:</span> <span class="value"> 0.00 km</span></div>
     <div class="gpsBox"><span class="label">Lat:</span> <span id="lat" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Lon:</span> <span id="lon" class="value">--</span></div>
-    <div class="gpsBox"><span class="label">Speed:</span> <span id="speed" class="value">--</span> km/h</div>
+    <div class="gpsBox"><span class="label">Speed:</span> <span id="speed" class="value">--</span><strong> km/h</strong></div>
     <div class="gpsBox"><span class="label">Bearing:</span> <span id="bearing" class="value">--</span>°</div>
     <div class="gpsBox"><span class="label">Fix:</span> <span id="fix" class="value warn">No Fix</span></div>
-    <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span> m</div>
+    <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span><strong> m</strong></div>
     <div class="gpsBox"><span class="label">Status:</span> <span id="status" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Satellites:</span> <span id="sats" class="value">--</span></div>
