@@ -198,6 +198,7 @@ function startGpsPipe() {
               time: msg.time || new Date().toISOString(),
               fix_mode: msg.mode || 0,
               accuracy: horizAcc,
+	      status: msg.status ?? null, // add GPSD status field if present
             });
           }
         }

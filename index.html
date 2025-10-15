@@ -128,6 +128,7 @@
     <div class="gpsBox"><span class="label">Bearing:</span> <span id="bearing" class="value">--</span>°</div>
     <div class="gpsBox"><span class="label">Fix:</span> <span id="fix" class="value warn">No Fix</span></div>
     <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span> m</div>
+    <div class="gpsBox"><span class="label">Status:</span> <span id="status" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Satellites:</span> <span id="sats" class="value">--</span></div>
   </div>
@@ -370,7 +371,7 @@
   // --- live GPS socket ---
   const socket = io();
   socket.on("gps", gpsData => {
-    const { lat, lon, speed, track: bearing, accuracy, fix_mode } = gpsData;
+    const { lat, lon, speed, track: bearing, accuracy, fix_mode, status } = gpsData;
     if (!lat || !lon || isNaN(lat) || isNaN(lon)) return;
 
     const latLng = [lat, lon];
@@ -397,6 +398,43 @@
     if (fix_mode === 3) { fixEl.textContent = "3D Fix"; fixEl.className = "value"; }
     else if (fix_mode === 2) { fixEl.textContent = "2D Fix"; fixEl.className = "value warn"; }
     else { fixEl.textContent = "No Fix"; fixEl.className = "value error"; }
+
+    // Update status text
+    const statusEl = document.getElementById("status");
+    if (status === 0 || status === null || status === undefined) {
+    	statusEl.textContent = "Unknown";
+  	statusEl.className = "value error";
+    } else if (status === 1) {
+  	statusEl.textContent = "Normal";
+  	statusEl.className = "value warn";
+    } else if (status === 2) {
+  	statusEl.textContent = "DGPS/Enhanced";
+  	statusEl.className = "value";
+    } else if (status === 3) {
+  	statusEl.textContent = "RTK Fixed";
+  	statusEl.className = "value";
+    } else if (status === 4) {
+  	statusEl.textContent = "RTK Floating";
+  	statusEl.className = "value";
+    } else if (status === 5) {
+  	statusEl.textContent = "DR";
+  	statusEl.className = "value";
+    } else if (status === 6) {
+  	statusEl.textContent = "GNSSDR";
+  	statusEl.className = "value";
+    } else if (status === 7) {
+  	statusEl.textContent = "Time/Surveyed";
+  	statusEl.className = "value";
+    } else if (status === 8) {
+  	statusEl.textContent = "Simulated";
+  	statusEl.className = "value";
+    } else if (status === 9) {
+  	statusEl.textContent = "P/Y";
+  	statusEl.className = "value";
+    } else {
+  	statusEl.textContent = String(status);
+  	statusEl.className = "value";
+    }
 
     if (bearing && !isNaN(bearing)) setMarkerRotation(marker, bearing);
 
