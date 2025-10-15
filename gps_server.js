@@ -53,7 +53,7 @@ app.get("/raw/:date", async (req, res) => {
     `, [date]);
 
     const points = rows
-      .map(r => r.message)
+      .map(r => (typeof r.message === "string" ? JSON.parse(r.message) : r.message))
       .filter(m => m.class === "TPV" && m.lat && m.lon)
       .map(m => ({
         lat: m.lat,
@@ -69,6 +69,7 @@ app.get("/raw/:date", async (req, res) => {
     res.status(500).json({ error: "DB query failed" });
   }
 });
+
 
 app.get("/track/:date", async (req, res) => {
   try {
