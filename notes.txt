@@ -1,3 +1,13 @@
+Notes for gps_tracker web application
+
+The raspberry pi boots and advertises a Wifi AP called PedroPascal, connected users get IP addresses in the range from 192.168.50.2-200. The AP has the IP 192.168.50.1, with username 'pi'.
+
+The ardusimplertk2B can and needs to be configured correctly as its config can determine whether gps data is sent out on any serial port, also it may be configured for something like survey in and a fixed location etc.
+
+The RPi usb port designatin can change on any boot between /dev/ttyACM0 /dev/ttyUSB0 etc. it needs to be fixed by hardware recognition.
+
+You can send the gps NTRIP feeds to improve the accuracy of the gps data. At sea without internet connectivity the best and only way would be a phone app to feeed NTRIP data directly to the pi via ser2ser and its AP. 
+
 map tiles are downloaded with the python script to a tiles folder:
 
 --type satellite or --type osm
@@ -97,4 +107,57 @@ TODO:
 1. Show when the error rate is high at the gps input - show a red circle showing accuracy is low
 
 2. Allow recalling old tracks (raw logs from the day) by adding a control listing files to load, labelling by date, query all dates if needed
+3. Add another usb wifi adapter to get rtcm feed from internet, also needs a separate usb cable to the second usb port on the gps for RTCM3 in only.
 
+HISTORY
+1. Had to recompile gpsd to get the latest gpsctl tools to talk to the ardusimplertk2b becuase in case you need to change modes from base to rover directly from the pi:
+
+# download latest release file from: http://download.savannah.gnu.org/releases/gpsd/
+sudo su -
+cd home/pi/repos/
+tar -xzf gpsd-X.YY.tar.gz
+cd gpsd-X.YY
+scons && scons check
+scons install && scons udev-install
+
+# then ubxtool works fine
+# use -P 27.12 or whatever the ProtVer is from this:
+
+ubxtool -p MON-VER
+export UBXOPTS="-P 27.12"
+ubxtool -p RESET -P 27.12
+ubxtool -e BINARY or ubxtool -f /dev/ttyACM0 -P 27.12 -e BINARY if gpsd is not running
+ubxtool -d NMEA or ubxtool -f /dev/ttyACM0 -P 27.12 -d NMEA
+
+ubxtool -S 115200 -f /dev/ttyACM0 -P 27.12 (close gpsd and gp_server first)
+ubxtool -p CFG-NAV5 -P 27.12
+ubxtool -p CFG-RATE -P 27.12
+ubxtool -g CFG-SIGNAL
+ubxtool -p MODEL,5 -P 27.12 -v 2
+ubxtool -p CFG-NAV5 -P 27.12 -v 2
+ubxtool -p SAVE  -P 27 -v 2 # check this against using layers 0,1,2 of the configuration items
+
+#This reset everything back to rover and satellite number started flowing
+
+
+#gpsctl sends some config data to the gps port when initiatlizing - use the -b option in /etc/default/gps to prevent this
+# to check for incoming strings
+gpspipe -w | grep TPV
+gpspipe -R | hexdump -C | head
+gpspipe --json | grep TPV
+gpspipe --nmea 
+
+ubxtool -p MON-SPAN -P 27.12 -v3 -f /dev/ttyGNSS | grep  -E  '^     1[[:digit:]]{9}, [[:digit:]]{1,3}' > ant.dat
+
+$vim ant.plt
+set terminal qt size 600,600
+
+set style line 12 lc rgb'#808080' lt 0 lw 1
+set grid back ls 12
+
+set xtics nomirror rotate by -45
+set format x "%9.0f"
+set yrange [20:180]
+plot 'ant.dat' using 1:2
+
+$gnuplot -persist < ant.plt

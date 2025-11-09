@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Echo Console: Seafloor Profile (D3.js)</title>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background-color: #212121; 
+            color: #ffffff; 
+            display: flex; 
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .container { 
+            flex-grow: 1;
+            padding: 20px;
+        }
+        .info-bar { 
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+            background-color: #2b2b2b; 
+            padding: 10px 20px; 
+        }
+        .info-panel {
+            display: flex;
+            gap: 20px;
+        }
+        .info-item { 
+            padding: 0 10px; 
+        }
+        .info-value {
+            color: #00ff99;
+            font-weight: bold;
+        }
+        #seafloor-chart { 
+            background-color: #000000; 
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        /* D3 styles */
+        .line {
+            fill: none;
+            stroke: #00ff99;
+            stroke-width: 2px;
+        }
+        .axis line, .axis path {
+            stroke: #666;
+        }
+        .axis text {
+            fill: #ffffff;
+            font-size: 10px;
+        }
+        .domain {
+            stroke: #666;
+        }
+        /* Button Style */
+        .scale-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .scale-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="info-bar">
+        <div class="info-panel">
+            <div class="info-item">
+                Status: <span id="connectionStatus" class="info-value" style="color:#ff4d4d;">Disconnected</span>
+            </div>
+            <div class="info-item">
+                Smoothed Depth: <span id="distanceValue" class="info-value">-- cm</span>
+            </div>
+            <div class="info-item">
+                Peak Value: <span id="peakValue" class="info-value">--</span>
+            </div>
+            <div class="info-item">
+                Scale: <span id="scaleStatus" class="info-value">Fixed (0 to 500 cm)</span>
+            </div>
+        </div>
+        <div class="info-panel">
+            <button id="toggleScaleBtn" class="scale-button">Switch to Dynamic Scale</button>
+            <div class="info-item" style="margin-right: 0;">
+                History: <span id="dataCount" class="info-value">0</span> / 500
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <svg id="seafloor-chart" width="100%" height="100%"></svg>
+    </div>
+    
+    <script>
+        // --- Configuration ---
+        const HISTORY_SIZE = 2000; // Number of data points to display
+        const MAX_Y_CM = 5000;     // Default max depth for fixed scale (in cm)
+        const SCALE_PADDING_CM = 1; // Padding added above/below min/max for dynamic scale
+        
+        // --- Data & State ---
+        let distanceHistory = []; // Array of { distance: number, peak: number }
+        let pointIndex = 0;       // Unique index for the X-axis (time proxy)
+        let isDynamicScale = false; // Toggle state
+
+        // --- D3 Chart Setup ---
+        const margin = { top: 10, right: 30, bottom: 30, left: 40 };
+        const svg = d3.select("#seafloor-chart");
+        let width, height;
+        let g, xAxisG, yAxisG;
+        let x, y;
+        let line;
+
+        function initializeChart() {
+            const svgElement = svg.node();
+            width = svgElement.clientWidth - margin.left - margin.right;
+            height = svgElement.clientHeight - margin.top - margin.bottom;
+
+            svg.selectAll("*").remove();
+
+            g = svg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Scales: X is time-based (index), Y is depth (inverted)
+            x = d3.scaleLinear()
+                .domain([pointIndex - HISTORY_SIZE, pointIndex])
+                .range([0, width]);
+
+            // Initialize Y scale to FIXED
+            y = d3.scaleLinear()
+                .domain([MAX_Y_CM, 0]) // 0cm (shallow) at top, MAX_Y_CM (deep) at bottom.
+                .range([height, 0]);
+
+            // Axes
+            xAxisG = g.append("g")
+                .attr("class", "axis x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => `Point ${d}`).ticks(5)); 
+
+            yAxisG = g.append("g")
+                .attr("class", "axis y-axis")
+                .call(d3.axisLeft(y).ticks(5));
+            
+            // Y-axis label
+            g.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6 - margin.left)
+                .attr("x", 0 - (height / 2))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .style("fill", "white")
+                .text("Depth (cm)"); 
+
+            // Line generator
+            line = d3.line()
+                .x((d, i) => x(pointIndex - (distanceHistory.length - 1 - i)))
+                .y(d => y(d.distance));
+
+            // Append the path element for the line
+            g.append("path")
+                .attr("class", "line");
+        }
+        
+        // --- Scale Control Functions ---
+
+        function updateDynamicYScale() {
+            if (distanceHistory.length === 0) return;
+            // Filter out non-positive readings, though server side should handle this mostly
+            const currentDepths = distanceHistory.map(d => d.distance).filter(d => d > 0); 
+            if (currentDepths.length === 0) return;
+
+            const minDepth = d3.min(currentDepths);
+            const maxDepth = d3.max(currentDepths);
+            
+            // Calculate domain with padding, ensuring min is not negative
+            const newMin = Math.max(0, minDepth - SCALE_PADDING_CM);
+            const newMax = maxDepth + SCALE_PADDING_CM; 
+
+            // Apply the new dynamic domain (inverted for depth)
+            y.domain([newMax, newMin]); 
+            
+            // Instantly update Y-axis visualization
+            yAxisG.call(d3.axisLeft(y).ticks(5)); 
+            
+            // Update status text
+            document.getElementById("scaleStatus").textContent = `Dynamic (${newMin.toFixed(1)} to ${newMax.toFixed(1)} cm)`;
+        }
+
+        function resetFixedScale() {
+            y.domain([MAX_Y_CM, 0]);
+            
+            // Use a transition for smooth switch back to fixed scale
+            yAxisG.transition().duration(500).call(d3.axisLeft(y).ticks(5));
+            
+            // Update line and status text
+            g.select(".line").datum(distanceHistory).attr("d", line); 
+            document.getElementById("scaleStatus").textContent = `Fixed (0 to ${MAX_Y_CM} cm)`;
+        }
+
+        function toggleScaleMode() {
+            isDynamicScale = !isDynamicScale;
+            const button = d3.select('#toggleScaleBtn');
+            
+            if (isDynamicScale) {
+                button.text("Switch to Fixed Scale");
+                // Run the dynamic scale update immediately to set the initial domain
+                updateDynamicYScale(); 
+            } else {
+                button.text("Switch to Dynamic Scale");
+                resetFixedScale(); 
+            }
+            // Always redraw the chart after changing the scale mode
+            redrawChart();
+        }
+
+        // Attach event listener to the button
+        d3.select('#toggleScaleBtn').on('click', toggleScaleMode);
+        
+        // --- Draw Function (Handles X-axis Scrolling and Line Redraw) ---
+        function redrawChart() {
+            // 1. Update X-axis domain for scrolling
+            x.domain([pointIndex - HISTORY_SIZE + 1, pointIndex]);
+
+            // 2. Transition the X-axis to simulate scrolling
+            xAxisG.transition()
+                .duration(0) 
+                .ease(d3.easeLinear)
+                .call(d3.axisBottom(x).tickFormat(d => `Point ${d}`).ticks(5));
+
+            // 3. Redraw the line
+            g.select(".line")
+                .datum(distanceHistory)
+                .attr("d", line)
+                .attr("transform", null); 
+        }
+
+        // Initial chart setup and resize observer
+        initializeChart();
+        const resizeObserver = new ResizeObserver(initializeChart);
+        resizeObserver.observe(svg.node());
+
+        // --- WebSocket Client (Raw) ---
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/sonar_raw_stream`; 
+        const ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer'; 
+
+        ws.onopen = () => {
+            document.getElementById("connectionStatus").textContent = 'Connected (Streaming)';
+            document.getElementById("connectionStatus").style.color = '#00ff99';
+        };
+
+        ws.onclose = () => {
+            document.getElementById("connectionStatus").textContent = 'Disconnected';
+            document.getElementById("connectionStatus").style.color = '#ff4d4d';
+        };
+
+        ws.onerror = (e) => {
+            document.getElementById("connectionStatus").textContent = 'Error';
+            document.getElementById("connectionStatus").style.color = '#ff4d4d';
+            console.error("WebSocket Error:", e);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                // Decode Binary Data (3 bytes: Uint16BE for distMM, Uint8 for peak)
+                const arrayBuffer = event.data;
+                const dataView = new DataView(arrayBuffer);
+                const distMM = dataView.getUint16(0, false); 
+                const peakValue = dataView.getUint8(2); 
+
+                // Convert distance from mm to cm
+                const distanceCm = distMM / 10.0;
+                
+                // Only process and plot non-zero distances (valid readings)
+                if (distanceCm > 0) { 
+                    // 1. Update info panel
+                    document.getElementById("distanceValue").textContent = `${distanceCm.toFixed(1)} cm`;
+                    document.getElementById("peakValue").textContent = peakValue;
+                    
+                    // 2. Update the scrolling history array
+                    if (distanceHistory.length >= HISTORY_SIZE) {
+                        distanceHistory.shift(); 
+                    }
+                    distanceHistory.push({ distance: distanceCm, peak: peakValue });
+                    pointIndex++;
+                    
+                    // 3. Update the chart
+                    if (isDynamicScale) {
+                        // Dynamically update Y scale on every new point
+                        updateDynamicYScale(); 
+                    } 
+
+                    // Always redraw X-axis scrolling and the line path
+                    redrawChart(); 
+
+                    document.getElementById("dataCount").textContent = distanceHistory.length;
+                }
+
+            } catch (e) {
+                console.error('Client-side data processing failed:', e);
+            }
+        };
+    </script>
+</body>
+</html>

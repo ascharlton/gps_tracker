@@ -1,477 +1,739 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Offline GPS Tracker (WebSocket + Multi-Path + Waypoints)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="/static/leaflet.css" />
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <meta charset="utf-8" />
+    <title>Open Echo Console: Map & GPS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/leaflet.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link href="./static/tailwind.min.css" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* Define 5 primary depth colors as CSS variables for the legend */
+        :root {
+            --depth-c1: #00BFFF; /* Light blue (Shallow, 0m) */
+            --depth-c2: #1E90FF; /* Mid-light blue (12.5m) */
+            --depth-c3: #0000FF; /* Medium blue (25m) */
+            --depth-c4: #00008B; /* Dark blue (37.5m) */
+            --depth-c5: #000033; /* Very dark blue (Deep, 50m+) */
+        }
 
-  <style>
-    html, body { height: 100%; margin: 0; }
-    #map { height: 100vh; width: 100%; background: lightgray; }
+        html, body { height: 100%; margin: 0; }
+        #map { height: 100vh; width: 100vw; background: lightgray; }
+        /* info panels */
 
-    /* info panels */
+        /* Collapsible GPS Info Panel */
+        #gpsInfoContainer {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        z-index: 1000;
+        font-family: sans-serif;
+        }
+        /* Toggle button */
+        #gpsToggleBtn {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
 
-    /* Collapsible GPS Info Panel */
-#gpsInfoContainer {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  z-index: 1000;
-  font-family: sans-serif;
-}
+        /* Panel box */
+        #gpsInfoPanel {
+        display: none; /* hidden by default */
+        margin-top: 8px;
+        background: rgba(255,255,255,0.95);
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.3);
+        width: 260px;
+        backdrop-filter: blur(3px);
+        }
 
-/* Toggle button */
-#gpsToggleBtn {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 14px;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
+        /* GPS boxes inside panel */
+        .gpsBox {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 4px 6px;
+        font-size: 13px;
+        font-family: monospace;
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        }
+        .gpsBox:last-child { margin-bottom: 0; }
+        .gpsBox .label { color: #333; text-align: left; flex: 1; margin-right: 4px; }
+        .gpsBox .warn { color: darkorange; }
+        .gpsBox .error { color: red; }
 
-/* Panel box */
-#gpsInfoPanel {
-  display: none; /* hidden by default */
-  margin-top: 8px;
-  background: rgba(255,255,255,0.95);
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.3);
-  width: 260px;
-  backdrop-filter: blur(3px);
-}
+        .gpsBox .value {
+        text-align: right;
+        flex: 1;
+        font-weight: bold;
+        }
 
-/* GPS boxes inside panel */
-.gpsBox {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 13px;
-  font-family: monospace;
-  margin-bottom: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.gpsBox:last-child { margin-bottom: 0; }
-.gpsBox .label { color: #333; text-align: left; flex: 1; margin-right: 4px; }
-.gpsBox .warn { color: darkorange; }
-.gpsBox .error { color: red; }
+        /* Buttons inside panel */
+        #reloadBtn {
+        background: rgba(255,255,255,0.9);
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 13px;
+        width: 100%;
+        cursor: pointer;
+        margin-bottom: 6px;
+        }
 
-/*.gpsBox .label {
-  text-align: left;
-  flex: 1;
-}*/
+        /* markers and icons */
+        .rotated-marker {
+        transition: transform 0.25s linear, filter 0.25s linear;
+        transform-origin: center center;
+        }
+        .glow-nofix { filter: drop-shadow(2px 2px 4px rgba(255,0,0,0.8)); }
+        .glow-2dfix { filter: drop-shadow(2px 2px 4px rgba(255,165,0,0.8)); }
+        .glow-3dfix { filter: drop-shadow(2px 2px 6px rgba(0,255,0,0.8)) drop-shadow(0 0 4px rgba(255,255,255,0.5)); }
 
-.gpsBox .value {
-  text-align: right;
-  flex: 1;
-  font-weight: bold;
-}
+        /* layer and path controls */
+        .leaflet-control-layers-toggle {
+        background-image: url('/static/icons/globe.png') !important;
+        background-size: 20px 20px; background-repeat: no-repeat;
+        background-position: center; width: 34px !important; height: 34px !important;
+        }
 
-/* Buttons inside panel */
-#reloadBtn {
-  background: rgba(255,255,255,0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
-  width: 100%;
-  cursor: pointer;
-  margin-bottom: 6px;
-}
+        /* Styling for all custom controls (Waypoint, Path, Depth, Plot) */
+        .leaflet-control-path, .leaflet-control-waypoint, .leaflet-control-depth, .leaflet-control-plot {
+        background-color: rgba(255,255,255,0.9); width: 36px; height: 36px;
+        border-radius: 4px; text-align: center; line-height: 34px;
+        cursor: pointer; font-size: 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3); margin-top: 4px;
+        }
+        .leaflet-control-path.active { background-color: #4CAF50; color: white; }
+        .leaflet-control-depth.active { background-color: #007bff; color: white; }
+        .leaflet-control-waypoint:hover { background-color: #d4e7f5; }
 
-    /* markers and icons */
-    .rotated-marker {
-      transition: transform 0.25s linear, filter 0.25s linear;
-      transform-origin: center center;
-    }
-    .glow-nofix { filter: drop-shadow(2px 2px 4px rgba(255,0,0,0.8)); }
-    .glow-2dfix { filter: drop-shadow(2px 2px 4px rgba(255,165,0,0.8)); }
-    .glow-3dfix { filter: drop-shadow(2px 2px 6px rgba(0,255,0,0.8)) drop-shadow(0 0 4px rgba(255,255,255,0.5)); }
+        /* Style for the new plot button (Sonar Plot is the 4th button) */
+        .leaflet-control-plot {
+             /*background-color: #dfe3df;*/ /* Distinct color */
+             color: white;
+             font-size: 24px; /* Slightly larger icon */
+        }
+        .leaflet-control-plot:hover {
+            background-color: #d4e7f5;
+        }
 
-    /* layer and path controls */
-    .leaflet-control-layers-toggle {
-      background-image: url('/static/icons/globe.png') !important;
-      background-size: 20px 20px; background-repeat: no-repeat;
-      background-position: center; width: 34px !important; height: 34px !important;
-    }
-    .leaflet-control-path, .leaflet-control-waypoint {
-      background-color: rgba(255,255,255,0.9); width: 36px; height: 36px;
-      border-radius: 4px; text-align: center; line-height: 34px;
-      cursor: pointer; font-size: 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.3); margin-top: 4px;
-    }
-    .leaflet-control-path.active { background-color: #4CAF50; color: white; }
-    .leaflet-control-waypoint:hover { background-color: #f8d7da; }
+        .path-marker div {
+        font-size: 20px; font-weight: bold; color: blue;
+        text-align: center;
+        }
+        .crosshair-cursor { cursor: crosshair !important; }
 
-    .path-marker div {
-      font-size: 20px; font-weight: bold; color: blue;
-      text-align: center;
-    }
-    .crosshair-cursor { cursor: crosshair !important; }
+        /* zoom indicator */
+        .zoom-level-control {
+        background: rgba(255,255,255,0.8);
+        padding: 5px 8px; border-radius: 4px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        font-family: sans-serif; font-size: 14px;
+        }
 
-    /* zoom indicator */
-    .zoom-level-control {
-      background: rgba(255,255,255,0.8);
-      padding: 5px 8px; border-radius: 4px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-      font-family: sans-serif; font-size: 14px;
-    }
-  </style>
+        /* Depth legend styling: Updated to use a SMOOTH linear gradient */
+        .depth-legend-bar {
+            height: 10px;
+            border-radius: 5px;
+            /* Use CSS variables to create a smooth gradient that matches the interpolation stops */
+            background: linear-gradient(to right,
+                var(--depth-c1) 0%,   /* 0m */
+                var(--depth-c2) 1%,  /* 12.5m */
+                var(--depth-c3) 50%,  /* 25m */
+                var(--depth-c4) 75%,  /* 37.5m */
+                var(--depth-c5) 100%  /* 50m */
+            );
+            margin-top: 4px;
+            margin-bottom: 4px; /* Added margin for separation */
+        }
+
+        /* Hide the old stepped color swatches */
+        .depth-color-swatches {
+            display: none;
+        }
+    </style>
 </head>
-
 <body>
-<div id="gpsInfoContainer">
-  <button id="gpsToggleBtn">📡 GPS Info</button>
-  <div id="gpsInfoPanel">
+    <div id="gpsInfoContainer">
+    <button id="gpsToggleBtn">📡 GPS Info</button>
+    <div id="gpsInfoPanel">
     <button id="reloadBtn" title="Reload track from today's log">↻ Reload Track</button>
     <div class="gpsBox" id="info_distance"><span class="label">Distance:</span> <span class="value"> 0.00 km</span></div>
     <div class="gpsBox"><span class="label">Lat:</span> <span id="lat" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Lon:</span> <span id="lon" class="value">--</span></div>
+    <div class="gpsBox"><span class="label">Alt:</span> <span id="altitude" class="value">--</span><strong> m</strong></div>
+    <div class="gpsBox"><span class="label">Depth:</span> <span id="depth" class="value">--</span><strong> m</strong></div>
     <div class="gpsBox"><span class="label">Speed:</span> <span id="speed" class="value">--</span><strong> km/h</strong></div>
     <div class="gpsBox"><span class="label">Bearing:</span> <span id="bearing" class="value">--</span>°</div>
     <div class="gpsBox"><span class="label">Fix:</span> <span id="fix" class="value warn">No Fix</span></div>
     <div class="gpsBox"><span class="label">Accuracy:</span> <span id="accuracy" class="value">--</span><strong> m</strong></div>
-    <div class="gpsBox"><span class="label">Status:</span> <span id="status" class="value">--</span></div>
+    <div class="gpsBox"><span class="label">Status:</span> <span id="status" class="value">--</strong></div>
     <div class="gpsBox"><span class="label">Records:</span> <span id="recordCount" class="value">--</span></div>
     <div class="gpsBox"><span class="label">Satellites:</span> <span id="sats" class="value">--</span></div>
-  </div>
-</div>
+    <div class="gpsBox" id="depth_key" style="flex-direction: column; align-items: flex-start;">
+        <span class="label" style="margin-bottom: 4px; font-family: sans-serif;">Depth Key (m):</span>
+        
+        <div class="depth-legend-bar" style="width: 100%;"></div>
+        
+        <div style="width:100%; display: flex; justify-content: space-between; font-size: 11px; font-family: sans-serif;">
+            <span style="font-weight: bold;">0</span>
+            <span style="font-weight: bold;">12.5</span>
+            <span style="font-weight: bold;">25</span>
+            <span style="font-weight: bold;">37.5</span>
+            <span style="font-weight: bold;">50+</span>
+        </div>
+    </div>
+    </div>
+    </div>
 
-  <div id="map"></div>
+    <div id="map"></div>
+    
+    <script src="/static/leaflet.js"></script>
+    <script type="module">
+            // --- Map Initialization ---
+            let sonarDepthLayer;
+            const map = L.map('map', { center: [44.3, 15.2], zoom: 12 });
+            const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
+            const dark = L.tileLayer('/tiles_dark/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 32 });
+            const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
 
-  <script src="/static/leaflet.js"></script>
-  <script src="/socket.io/socket.io.js"></script>
 
-  <script type="module">
-  const map = L.map('map', { center: [44.3, 15.2], zoom: 12 });
-  const osm = L.tileLayer('/tiles_osm/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
-  const dark = L.tileLayer('/tiles_dark/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 32 });
-  const satellite = L.tileLayer('/tiles_satellite/{z}/{x}/{y}.png', { minZoom: 3, maxZoom: 19 });
-  osm.addTo(map);
-  L.control.layers({ "🌍 OSM": osm, "🌙 Dark": dark, "🛰 Satellite": satellite }).addTo(map);
+            osm.addTo(map);
 
-  const markerIcon = L.icon({ iconUrl: "/static/icons/arrow-icon.svg", iconSize:[50,50], iconAnchor:[25,25] });
-  const marker = L.marker([44.3,15.2], { icon: markerIcon }).addTo(map);
+            // Add the standard Layer Control for map selection
+            L.control.layers({ "🌍 OSM": osm, "🌙 Dark": dark, "🛰 Satellite": satellite }).addTo(map);
 
-  let lastBearing = 0;
-  function setMarkerRotation(marker, bearing) {
-    lastBearing = bearing;
-    const el = marker.getElement();
-    if (!el) return;
-    const transform = el.style.transform || "";
-    const base = transform.replace(/rotate\(.+?\)/, "");
-    el.style.transform = `${base} rotate(${bearing}deg)`;
-    el.classList.add("rotated-marker");
-  }
+            // --- Marker Setup ---
+            const markerIcon = L.icon({ iconUrl: "/static/icons/arrow-icon.svg", iconSize:[50,50], iconAnchor:[25,25] });
+            const marker = L.marker([44.3,15.2], { icon: markerIcon }).addTo(map);
 
-  // zoom indicator
-  const zoomControl = L.control({ position: 'bottomright' });
-  zoomControl.onAdd = map => {
-    const div = L.DomUtil.create('div', 'zoom-level-control');
-    div.textContent = `Zoom: ${map.getZoom()}`;
-    return div;
-  };
-  zoomControl.addTo(map);
-  map.on('zoomend', () => {
-    document.querySelector('.zoom-level-control').textContent = `Zoom: ${map.getZoom()}`;
-  });
+            let lastBearing = 0;
+            function setMarkerRotation(marker, bearing) {
+                lastBearing = bearing;
+                const el = marker.getElement();
+                if (!el) return;
+                const transform = el.style.transform || "";
+                const base = transform.replace(/rotate\(.+?\)/, "");
+                el.style.transform = `${base} rotate(${bearing}deg)`;
+                el.classList.add("rotated-marker");
+            }
+            let isDepthLayerActive = false;
+            // --- Leaflet Custom Controls ---
 
-  const track = [];
-  const polyline = L.polyline(track, { color: 'green' }).addTo(map);
-  let totalDistance = 0;
+            // 1. Zoom indicator (bottom right)
+            const zoomControl = L.control({ position: 'bottomright' });
+            zoomControl.onAdd = map => {
+                const div = L.DomUtil.create('div', 'zoom-level-control');
+                div.textContent = `Zoom: ${map.getZoom()}`;
+                return div;
+            };
 
-  const toRad = d => d * Math.PI / 180;
-  const haversineKm = (a, b) => {
-    const R = 6371;
-    const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
-    const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
-    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  };
+            zoomControl.addTo(map);
+            map.on('zoomend', () => {
+                document.querySelector('.zoom-level-control').textContent = `Zoom: ${map.getZoom()}`;
+            });
 
-  async function loadRawTrack() {
-    //const today = new Date().toISOString().split("T")[0];
-    // Use local date instead of UTC to match your Postgres query
-    const today = new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD"
-    console.log(`[DEBUG] Fetching /raw/${today}`);
+            const track = [];
+            const polyline = L.polyline(track, { color: 'green' }).addTo(map);
+            let totalDistance = 0;
 
-    const res = await fetch(`/raw/${today}`);
-    if (!res.ok) {
-    	console.warn("Failed to fetch track data");
-    	return;
-    }
-    const points = await res.json();
-    console.log(`[DEBUG] Loaded ${points.length} points`);
+            const toRad = d => d * Math.PI / 180;
+            const haversineKm = (a, b) => {
+                const R = 6371;
+                const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
+                const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
+                const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+                return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+            };
 
-    if (!points.length) {
-    	console.warn("No track points returned for today");
-    	return;
-    }
+            async function loadRawTrack() {
+                const res = await fetch(`/depth/all`); 
+                if (!res.ok) {
+                    console.warn("Failed to fetch track data");
+                    return;
+                }
+                const points = await res.json();
+                console.log(`[DEBUG] Loaded ${points.length} points`);
 
-    track.length = 0;
-    totalDistance = 0;
+                if (!points.length) {
+                    console.warn("No track points returned for today");
+                    return;
+                }
 
-    for (const p of points) {
-      const latLng = [p.lat, p.lon];
-      if (track.length > 0) totalDistance += haversineKm(track[track.length - 1], latLng);
-      track.push(latLng);
-    }
+                track.length = 0;
+                totalDistance = 0;
 
-    polyline.setLatLngs(track);
-    if (!map.hasLayer(polyline)) polyline.addTo(map);
+                for (const p of points) {
+                    const depth_m = (p.depth_cm / 100.0) || 0;
+                    const pointData = [p.lat, p.lon, 0, depth_m]; // [lat, lon, alt=0, depth_m]
 
-    if (track.length) {
-      marker.setLatLng(track[track.length - 1]);
-      if (track.length > 1)
-      	map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
-    }
+                    if (track.length > 0) {
+                        const prevLatLng = [track[track.length - 1][0], track[track.length - 1][1]];
+                        totalDistance += haversineKm(prevLatLng, [p.lat, p.lon]);
+                    }
+                    track.push(pointData);
+                }
 
-    // Update UI distance
-    document.querySelector("#info_distance .value").textContent = `${totalDistance.toFixed(2)} km (reloaded)`;
-  }
+                polyline.setLatLngs(track.map(p => [p[0], p[1]]));
+                if (!map.hasLayer(polyline)) polyline.addTo(map);
 
-  document.getElementById("reloadBtn").addEventListener("click", loadRawTrack);
-  await loadRawTrack();
+                if (track.length) {
+                    const lastPoint = track[track.length - 1];
+                    marker.setLatLng([lastPoint[0], lastPoint[1]]);
+                    if (track.length > 1)
+                        map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+                }
 
-  async function updateRecordCount() {
-    const res = await fetch("/count/raw");
-    if (res.ok) {
-      const data = await res.json();
-      document.getElementById("recordCount").textContent = data.count.toLocaleString();
-    }
-  }
-  await updateRecordCount();
+                document.querySelector("#info_distance .value").textContent = `${totalDistance.toFixed(2)} km (reloaded)`;
 
-  // --- waypoint layer ---
-  const waypointLayer = L.layerGroup().addTo(map);
-  const redDot = L.divIcon({
-    className: "waypoint-dot",
-    html: '<div style="width:8px;height:8px;border-radius:50%;background:red;"></div>',
-    iconSize: [8,8]
-  });
+                if (isDepthLayerActive) {
+                    drawDepthVisualization();
+                }
+            }
 
-  async function loadWaypoints() {
-    try {
-      const res = await fetch("/waypoints");
-      if (!res.ok) return;
-      const waypoints = await res.json();
-      waypointLayer.clearLayers();
-      for (const wp of waypoints) {
-        L.marker([wp.lat, wp.lon], { icon: redDot })
-          .addTo(waypointLayer)
-          .bindTooltip(wp.name || `WP ${wp.id}`);
-      }
-    } catch (e) { console.error(e); }
-  }
-  await loadWaypoints();
+            document.getElementById("reloadBtn").addEventListener("click", loadRawTrack);
+            await loadRawTrack();
 
-  // --- Add Waypoint Control ---
-  const WaypointControl = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd: () => {
-      const div = L.DomUtil.create('div', 'leaflet-control-waypoint');
-      div.innerHTML = '📍';
-      div.title = "Add waypoint at current location";
-      div.onclick = async () => {
-        const latText = document.getElementById("lat").textContent;
-        const lonText = document.getElementById("lon").textContent;
-        if (latText === "--" || lonText === "--") return alert("No valid GPS fix yet!");
-        const lat = parseFloat(latText), lon = parseFloat(lonText);
-        const name = "Waypoint";
-        await fetch("/waypoints", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, lat, lon, description: null })
-        });
-        await loadWaypoints();
-      };
-      return div;
-    }
-  });
-  map.addControl(new WaypointControl());
+            async function updateRecordCount() {
+                const res = await fetch("/count/raw");
+                if (res.ok) {
+                const data = await res.json();
+                document.getElementById("recordCount").textContent = data.count.toLocaleString();
+                }
+            }
+            await updateRecordCount();
 
-  // --- Multi-path control ---
-  const PathControl = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd: map => {
-      const div = L.DomUtil.create('div', 'leaflet-control-path');
-      div.innerHTML = '&#x1F4C8;';
-      div.title = "Enable multi-path placement";
-      L.DomEvent.on(div, 'click', e => {
-        L.DomEvent.stopPropagation(e);
-        pathMode = !pathMode;
-        if (pathMode) clearPath();
-        div.classList.toggle('active', pathMode);
-        div.title = pathMode ? "Click map to place path points" : "Enable multi-path placement";
-        map.getContainer().classList.toggle('crosshair-cursor', pathMode);
-      });
-      return div;
-    }
-  });
-  map.addControl(new PathControl());
+            // --- waypoint layer ---
+            const waypointLayer = L.layerGroup().addTo(map);
+            const redDot = L.divIcon({
+                className: "waypoint-dot",
+                html: '<div style="width:8px;height:8px;border-radius:50%;background:red;"></div>',
+                iconSize: [8,8]
+            });
 
-  let pathMode = false;
-  let pathMarkers = [], pathLines = [];
-  function clearPath() {
-    pathMarkers.forEach(m => map.removeLayer(m));
-    pathLines.forEach(l => map.removeLayer(l));
-    pathMarkers = [];
-    pathLines = [];
-  }
+            async function loadWaypoints() {
+                try {
+                const res = await fetch("/waypoints");
+                if (!res.ok) return;
+                const waypoints = await res.json();
+                waypointLayer.clearLayers();
+                for (const wp of waypoints) {
+                    L.marker([wp.lat, wp.lon], { icon: redDot })
+                    .addTo(waypointLayer)
+                    .bindTooltip(wp.name || `WP ${wp.id}`);
+                }
+                } catch (e) { console.error(e); }
+            }
+            await loadWaypoints();
 
-  function bearingBetweenPoints(lat1, lon1, lat2, lon2) {
-    const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
-    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-              Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
-    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-  }
+            // 2. Waypoint Control (top right)
+            const WaypointControl = L.Control.extend({ 
+                options: { position: 'topright' }, 
+                onAdd: () => { 
+                    const div = L.DomUtil.create('div', 'leaflet-control-waypoint'); 
+                    div.innerHTML = '📍'; 
+                    div.title = "Add waypoint at current location";
+                    div.onclick = async () => {
+                    const latText = document.getElementById("lat").textContent;
+                    const lonText = document.getElementById("lon").textContent;
+                    if (latText === "--" || lonText === "--") return console.warn("No valid GPS fix yet!");
+                    const lat = parseFloat(latText), lon = parseFloat(lonText);
+                    const name = "Waypoint";
+                    await fetch("/waypoints", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name, lat, lon, description: null })
+                    });
+                    await loadWaypoints();
+                    };        
+                    return div; 
+                } 
+            });
+            map.addControl(new WaypointControl());
 
-  map.on('click', e => {
-    if (!pathMode) return;
-    const point = [e.latlng.lat, e.latlng.lng];
-    const currentPos = track.length ? track[track.length - 1] : null;
-    const prevPoint = pathMarkers.length
-      ? [pathMarkers[pathMarkers.length - 1].getLatLng().lat,
-         pathMarkers[pathMarkers.length - 1].getLatLng().lng]
-      : currentPos;
+            // 3. Multi-path control (top right)
+            const PathControl = L.Control.extend({ 
+                options: { position: 'topright' }, 
+                onAdd: map => { 
+                    const div = L.DomUtil.create('div', 'leaflet-control-path'); 
+                    div.innerHTML = '&#x1F4C8;'; 
+                    div.title = "Enable multi-path placement"; 
+                    let pathMode = false; 
+                    L.DomEvent.on(div, 'click', e => { 
+                        L.DomEvent.stopPropagation(e); 
+                        pathMode = !pathMode; 
+                        if (pathMode) clearPath(); 
+                        div.classList.toggle('active', pathMode); 
+                        div.title = pathMode ? "Click map to place path points" : "Enable multi-path placement"; 
+                        map.getContainer().classList.toggle('crosshair-cursor', pathMode); 
+                    }); 
+                    return div; 
+                } 
+            });
+            map.addControl(new PathControl());
 
-    const bearing = prevPoint ? bearingBetweenPoints(prevPoint[0], prevPoint[1], point[0], point[1]) : 0;
-    const distance = prevPoint ? haversineKm(prevPoint, point).toFixed(2) : 0;
-    const latStr = point[0].toFixed(6);
-    const lonStr = point[1].toFixed(6);
+            let pathMarkers = [], pathLines = [];
+            function clearPath() {
+                pathMarkers.forEach(m => map.removeLayer(m));
+                pathLines.forEach(l => map.removeLayer(l));
+                pathMarkers = [];
+                pathLines = [];
+            }
+            // 4. Depth Control (top right)
+            sonarDepthLayer = L.featureGroup().addTo(map);
 
-    const labelHTML = `
-      <div style="font-size:14px;text-align:center;">
-        <strong>${bearing.toFixed(0)}°</strong> ${distance} km<br>
-        <span style="font-size:14px;color:blue;">${latStr}, ${lonStr}</span>
-      </div>`;
+            function toggleDepthLayer() {
+                isDepthLayerActive = !isDepthLayerActive;
+                const depthBtn = document.querySelector('.leaflet-control-depth');
 
-    const m = L.marker(point, {
-      icon: L.divIcon({
-        className: 'path-marker',
-        html: labelHTML,
-        iconSize: [180, 180],
-        iconAnchor: [40, 25],
-      })
-    }).addTo(map);
+                if (depthBtn) {
+                    if (isDepthLayerActive) {
+                        depthBtn.classList.add('active');
+                        map.addLayer(sonarDepthLayer); 
+                        drawDepthVisualization(); 
+                        console.log("[INFO] Sonar Depth Layer Toggled ON (Visualizing history)");
+                    } else {
+                        depthBtn.classList.remove('active');
+                        map.removeLayer(sonarDepthLayer); 
+                        console.log("[INFO] Sonar Depth Layer Toggled OFF (Layer removed)");
+                    }
+                }
+            }
 
-    pathMarkers.push(m);
+            const DepthControl = L.Control.extend({
+                options: { position: 'topright' },
+                onAdd: () => {
+                    const div = L.DomUtil.create('div', 'leaflet-control-depth');
+                    div.innerHTML = '🌊';
+                    div.title = "Toggle Sonar Depth Visualization";
+                    L.DomEvent.on(div, 'click', e => {
+                        L.DomEvent.stopPropagation(e);
+                        toggleDepthLayer();
+                    });
+                    return div;
+                }
+            });
+            map.addControl(new DepthControl());
 
-    if (prevPoint) {
-      const line = L.polyline([prevPoint, point], { color: 'blue', weight: 2, dashArray: '5,5' }).addTo(map);
-      pathLines.push(line);
-    }
-  });
+            // 5. Plot Control (top right) - NEW BUTTON: Placed after Depth Control
+            const PlotControl = L.Control.extend({
+                options: { position: 'topright' },
+                onAdd: () => {
+                    const div = L.DomUtil.create('div', 'leaflet-control-plot');
+                    div.innerHTML = '&#9972;&#xFE0F;'; // Chart/plot emoji
+                    div.title = "View Real-Time Sonar Plot (Opens sonar-plot.html)";
+                    L.DomEvent.on(div, 'click', e => {
+                        L.DomEvent.stopPropagation(e);
+                        // Open the separate plot page (which uses Raw WebSocket)
+                        window.open('/sonar-plot.html', '_blank');
+                    });
+                    return div;
+                }
+            });
+            map.addControl(new PlotControl());
 
-  map.on('contextmenu dblclick', () => {
-    if (pathMode) {
-      pathMode = false;
-      map.getContainer().classList.remove('crosshair-cursor');
-      document.querySelector('.leaflet-control-path').classList.remove('active');
-    }
-  });
 
-  // --- live GPS socket ---
-  const socket = io();
-  socket.on("gps", gpsData => {
-    const { lat, lon, speed, track: bearing, accuracy, fix_mode, status } = gpsData;
-    if (!lat || !lon || isNaN(lat) || isNaN(lon)) return;
+            // --- Depth Visualization Logic with Smooth Gradient ---
+            const MAX_DEPTH = 50.0; // Max depth for visualization scaling (in meters)
+            const DEPTH_COLORS = [
+                document.documentElement.style.getPropertyValue('--depth-c1') || "#00BFFF", 
+                document.documentElement.style.getPropertyValue('--depth-c2') || "#1E90FF", 
+                document.documentElement.style.getPropertyValue('--depth-c3') || "#0000FF", 
+                document.documentElement.style.getPropertyValue('--depth-c4') || "#00008B", 
+                document.documentElement.style.getPropertyValue('--depth-c5') || "#000033" 
+            ];
 
-    const latLng = [lat, lon];
-    const last = track[track.length - 1];
+            const COLOR_STOPS = [
+                { stop: 0, color: DEPTH_COLORS[0] }, 
+                { stop: 0.25, color: DEPTH_COLORS[1] }, 
+                { stop: 0.50, color: DEPTH_COLORS[2] }, 
+                { stop: 0.75, color: DEPTH_COLORS[3] }, 
+                { stop: 1.0, color: DEPTH_COLORS[4] } 
+            ];
 
-    if (!last || lat !== last[0] || lon !== last[1]) {
-      if (last) totalDistance += haversineKm(last, latLng);
-      track.push(latLng);
-      polyline.setLatLngs(track);
-    }
+            function hexToRgb(hex) {
+                const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+                hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? [
+                    parseInt(result[1], 16),
+                    parseInt(result[2], 16),
+                    parseInt(result[3], 16)
+                ] : [0, 0, 0];
+            }
 
-    marker.setLatLng(latLng);
-    map.panTo(latLng);
+            function componentToHex(c) {
+                const hex = Math.round(Math.min(255, Math.max(0, c))).toString(16);
+                return hex.length === 1 ? "0" + hex : hex;
+            }
 
-    document.querySelector("#info_distance .value").textContent =
-      `${totalDistance.toFixed(2)} km`;
-    document.getElementById("lat").textContent = lat.toFixed(8);
-    document.getElementById("lon").textContent = lon.toFixed(8);
-    document.getElementById("speed").textContent = (speed * 3.6).toFixed(1);
-    document.getElementById("bearing").textContent = bearing ? bearing.toFixed(1) : "--";
-    document.getElementById("accuracy").textContent = accuracy ? accuracy.toFixed(1) : "--";
+            function rgbToHex(r, g, b) {
+                return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+            }
 
-    const fixEl = document.getElementById("fix");
-    if (fix_mode === 3) { fixEl.textContent = "3D Fix"; fixEl.className = "value"; }
-    else if (fix_mode === 2) { fixEl.textContent = "2D Fix"; fixEl.className = "value warn"; }
-    else { fixEl.textContent = "No Fix"; fixEl.className = "value error"; }
+            function getSmoothDepthColor(normalizedDepth) {
+                if (normalizedDepth <= COLOR_STOPS[0].stop) return COLOR_STOPS[0].color;
+                if (normalizedDepth >= COLOR_STOPS[COLOR_STOPS.length - 1].stop) return COLOR_STOPS[COLOR_STOPS.length - 1].color;
 
-    // Update status text
-    const statusEl = document.getElementById("status");
-    if (status === 0 || status === null || status === undefined) {
-    	statusEl.textContent = "Unknown";
-  	statusEl.className = "value error";
-    } else if (status === 1) {
-  	statusEl.textContent = "Normal";
-  	statusEl.className = "value warn";
-    } else if (status === 2) {
-  	statusEl.textContent = "DGPS/Enhanced";
-  	statusEl.className = "value";
-    } else if (status === 3) {
-  	statusEl.textContent = "RTK Fixed";
-  	statusEl.className = "value";
-    } else if (status === 4) {
-  	statusEl.textContent = "RTK Floating";
-  	statusEl.className = "value";
-    } else if (status === 5) {
-  	statusEl.textContent = "DR";
-  	statusEl.className = "value";
-    } else if (status === 6) {
-  	statusEl.textContent = "GNSSDR";
-  	statusEl.className = "value";
-    } else if (status === 7) {
-  	statusEl.textContent = "Time/Surveyed";
-  	statusEl.className = "value";
-    } else if (status === 8) {
-  	statusEl.textContent = "Simulated";
-  	statusEl.className = "value";
-    } else if (status === 9) {
-  	statusEl.textContent = "P/Y";
-  	statusEl.className = "value";
-    } else {
-  	statusEl.textContent = String(status);
-  	statusEl.className = "value";
-    }
+                let i = 0;
+                for (; i < COLOR_STOPS.length - 1; i++) {
+                    if (normalizedDepth <= COLOR_STOPS[i + 1].stop) break;
+                }
 
-    if (bearing && !isNaN(bearing)) setMarkerRotation(marker, bearing);
+                const startStop = COLOR_STOPS[i];
+                const endStop = COLOR_STOPS[i + 1];
+                const range = endStop.stop - startStop.stop;
+                const factor = (normalizedDepth - startStop.stop) / range;
 
-    const icon = marker.getElement();
-    if (icon) {
-      icon.classList.remove("glow-nofix","glow-2dfix","glow-3dfix");
-      if (fix_mode === 3) icon.classList.add("glow-3dfix");
-      else if (fix_mode === 2) icon.classList.add("glow-2dfix");
-      else icon.classList.add("glow-nofix");
-    }
-  });
+                const rgb1 = hexToRgb(startStop.color);
+                const rgb2 = hexToRgb(endStop.color);
 
-  socket.on("satellite_update", sat => {
-    document.getElementById("sats").textContent = `${sat.used}/${sat.total}`;
-  });
+                const r = rgb1[0] + (rgb2[0] - rgb1[0]) * factor;
+                const g = rgb1[1] + (rgb2[1] - rgb1[1]) * factor;
+                const b = rgb1[2] + (rgb2[2] - rgb1[2]) * factor;
 
-  socket.on("raw_count_update", updateRecordCount);
+                return rgbToHex(r, g, b);
+            }
 
-  // Toggle GPS info panel
-  document.getElementById("gpsToggleBtn").addEventListener("click", () => {
-    const panel = document.getElementById("gpsInfoPanel");
-    panel.style.display =
-      panel.style.display === "none" || !panel.style.display ? "block" : "none";
-  });
-</script>
+            function getDepthStyle(depth) {
+                const safeDepth = Math.max(0, depth || 0);
+                const clampedDepth = Math.min(safeDepth, MAX_DEPTH); 
+                const normalizedDepth = clampedDepth / MAX_DEPTH;
+                const color = getSmoothDepthColor(normalizedDepth);
+                const radius = 4 + (normalizedDepth * 12); 
 
+                return {
+                    radius: radius,
+                    fillColor: color,
+                    color: color, 
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                };
+            }
+
+            function drawDepthVisualization() {
+                sonarDepthLayer.clearLayers();
+                if (isDepthLayerActive) {
+                    track.forEach(point => {
+                        const [lat, lon, alt, depth] = point;
+                        const safeDepth = depth || 0; 
+                        const style = getDepthStyle(safeDepth);
+
+                        const circle = L.circleMarker([lat, lon], style)
+                            .bindTooltip(`Depth: ${safeDepth.toFixed(2)} m`, { direction: 'top' });
+
+                        sonarDepthLayer.addLayer(circle);
+                    });
+                }
+            }
+
+
+            function addBatchDepthPoints(batch) {
+                if (!isDepthLayerActive) return;
+
+                batch.forEach(p => {
+                    // p: { lat, lon, depth_cm, time }
+                    const depth_m = (p.depth_cm / 100.0) || 0;
+                    const style = getDepthStyle(depth_m);
+
+                    const circle = L.circleMarker([p.lat, p.lon], style)
+                        .bindTooltip(`Depth: ${depth_m.toFixed(2)} m`, { direction: 'top' });
+
+                    sonarDepthLayer.addLayer(circle);
+                });
+            }
+
+
+            // --- CORE GPS/DEPTH UPDATE LOGIC ---
+            function handleGpsUpdate(gpsData) {
+                const { lat, lon, alt, depth_m } = gpsData; 
+
+                if (!lat || !lon || isNaN(lat) || isNaN(lon)) return;
+
+                const currentLat = parseFloat(lat);
+                const currentLon = parseFloat(lon);
+                const currentAlt = parseFloat(alt) || 0;
+                const currentDepth = parseFloat(depth_m) || 0;
+                
+                document.getElementById("depth").textContent = currentDepth.toFixed(2); 
+
+                const latLng = [currentLat, currentLon];
+                const currentPoint = [currentLat, currentLon, currentAlt, currentDepth]; 
+                const last = track[track.length - 1];
+
+                if (!last || currentLat !== last[0] || currentLon !== last[1]) {
+                    
+                    if (last) {
+                        totalDistance += haversineKm([last[0], last[1]], [currentLat, currentLon]);
+                    }
+                    track.push(currentPoint);
+                    polyline.setLatLngs(track.map(p => [p[0], p[1]]));
+
+                    if (isDepthLayerActive) {
+                        const style = getDepthStyle(currentDepth);
+                        const circle = L.circleMarker(latLng, style).bindTooltip(`Depth: ${currentDepth.toFixed(2)} m`, { direction: 'top' });
+                        sonarDepthLayer.addLayer(circle);
+                    }
+                }
+
+                marker.setLatLng(latLng);
+                map.panTo(latLng);
+
+                document.querySelector("#info_distance .value").textContent = `${totalDistance.toFixed(2)} km (live)`;
+                document.getElementById("lat").textContent = currentLat.toFixed(8);
+                document.getElementById("lon").textContent = currentLon.toFixed(8);
+                document.getElementById("altitude").textContent = currentAlt.toFixed(2);
+                
+                document.getElementById("status").textContent = "Connected";
+                document.getElementById("status").className = "value";
+            }
+
+
+            // --- Other Controls & Event Handlers ---
+
+            function bearingBetweenPoints(lat1, lon1, lat2, lon2) {
+                const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+                const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+                return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+            }
+
+            map.on('click', e => {
+                const pathControlDiv = document.querySelector('.leaflet-control-path');
+                const pathMode = pathControlDiv.classList.contains('active');
+                if (!pathMode) return;
+                const point = [e.latlng.lat, e.latlng.lng];
+                const currentPos = track.length ? [track[track.length - 1][0], track[track.length - 1][1]] : null;
+                const prevPoint = pathMarkers.length
+                ? [pathMarkers[pathMarkers.length - 1].getLatLng().lat,
+                pathMarkers[pathMarkers.length - 1].getLatLng().lng]
+                : currentPos;
+
+                const bearing = prevPoint ? bearingBetweenPoints(prevPoint[0], prevPoint[1], point[0], point[1]) : 0;
+                const distance = prevPoint ? haversineKm(prevPoint, point).toFixed(2) : 0;
+                const latStr = point[0].toFixed(6);
+                const lonStr = point[1].toFixed(6);
+
+                const labelHTML = `
+                    <div style="font-size:14px;text-align:center;">
+                    <strong>${bearing.toFixed(0)}°</strong> ${distance} km<br>
+                    <span style="font-size:14px;color:blue;">${latStr}, ${lonStr}</span>
+                    </div>`;
+
+                    const m = L.marker(point, {
+                    icon: L.divIcon({
+                    className: 'path-marker',
+                    html: labelHTML,
+                    iconSize: [180, 180],
+                    iconAnchor: [40, 25],
+                    })
+                }).addTo(map);
+
+                pathMarkers.push(m);
+
+                if (prevPoint) {
+                const line = L.polyline([prevPoint, point], { color: 'blue', weight: 2, dashArray: '5,5' }).addTo(map);
+                pathLines.push(line);
+                }
+            });
+
+            map.on('contextmenu dblclick', () => {
+                const pathControlDiv = document.querySelector('.leaflet-control-path');
+                if (pathControlDiv.classList.contains('active')) {
+                pathControlDiv.classList.remove('active');
+                map.getContainer().classList.remove('crosshair-cursor');
+                }
+            });
+
+
+            // --- SOCKET.IO CLIENT ---
+            // Using Socket.IO for non-realtime, JSON-based map/status updates
+            const socket = io(); 
+
+            socket.on('connect', () => {
+                console.log("Socket.IO connected successfully.");
+                document.getElementById("status").textContent = "Connected";
+                document.getElementById("status").className = "value";
+            });
+
+            socket.on('disconnect', () => {
+                console.warn("Socket.IO disconnected. Reconnecting...");
+                document.getElementById("status").textContent = "Disconnected";
+                document.getElementById("status").className = "value error";
+            });
+
+
+            socket.on('gps', data => {
+                const { speed, track: bearing, accuracy, fix_mode, status } = data;
+                console.warn("on gps:",data);
+                
+                // 1. Core GPS/Depth Handler
+                handleGpsUpdate(data); 
+
+                // 2. Update secondary UI elements
+                document.getElementById("speed").textContent = speed ? (speed * 3.6).toFixed(1) : "--";
+                document.getElementById("bearing").textContent = bearing ? bearing.toFixed(1) : "--";
+                document.getElementById("accuracy").textContent = accuracy ? accuracy.toFixed(1) : "--";
+
+                const fixEl = document.getElementById("fix");
+                if (fix_mode === 3) { fixEl.textContent = "3D Fix"; fixEl.className = "value"; }
+                else if (fix_mode === 2) { fixEl.textContent = "2D Fix"; fixEl.className = "value warn"; }
+                else { fixEl.textContent = "No Fix"; fixEl.className = "value error"; }
+
+                const statusEl = document.getElementById("status");
+                if (status === 0 || status === null || status === undefined) { statusEl.textContent = "Unknown"; statusEl.className = "value error"; } 
+                else if (status === 1) { statusEl.textContent = "Normal"; statusEl.className = "value warn"; } 
+                else if (status === 2) { statusEl.textContent = "Differential GNSS DGPS/Enhanced"; statusEl.className = "value"; } 
+                else if (status === 3) { statusEl.textContent = "RTK Fixed"; statusEl.className = "value"; } 
+                else if (status === 4) { statusEl.textContent = "RTK Floating"; statusEl.className = "value"; } 
+                else if (status === 5) { statusEl.textContent = "Dead Reckoning"; statusEl.className = "value"; } 
+                else if (status === 6) { statusEl.textContent = "GNSS+Dead Reckoning"; statusEl.className = "value"; } 
+                else if (status === 7) { statusEl.textContent = "Time/Surveyed"; statusEl.className = "value"; } 
+                else if (status === 8) { statusEl.textContent = "Simulated"; statusEl.className = "value"; } 
+                else if (status === 9) { statusEl.textContent = "P/Y or encrypted"; statusEl.className = "value"; } 
+                else { statusEl.textContent = String(status); statusEl.className = "value"; }
+
+
+                if (bearing && !isNaN(bearing)) setMarkerRotation(marker, bearing);
+
+                const icon = marker.getElement();
+                if (icon) {
+                    icon.classList.remove("glow-nofix","glow-2dfix","glow-3dfix");
+                    if (fix_mode === 3) icon.classList.add("glow-3dfix");
+                    else if (fix_mode === 2) icon.classList.add("glow-2dfix");
+                    else icon.classList.add("glow-nofix");
+                }
+            });
+
+            socket.on('sonar_batch', batch => {
+                console.warn("on sonar_batch:",batch);
+                // The server sends a batch of points for map visualization
+                addBatchDepthPoints(batch);
+            });
+
+            socket.on("satellite_update", sat => {
+                console.warn("on satellite_update:",sat);
+                document.getElementById("sats").textContent = `${sat.used}/${sat.total}`;
+            });
+
+            socket.on("raw_count_update", updateRecordCount);
+
+            // Toggle GPS info panel
+            document.getElementById("gpsToggleBtn").addEventListener("click", () => {
+                const panel = document.getElementById("gpsInfoPanel");
+                panel.style.display = panel.style.display === "none" || !panel.style.display ? "block" : "none";
+            });
+    </script>
 </body>
 </html>
-
