@@ -6,6 +6,7 @@
 
 const express = require("express");
 const fs = require("fs");
+const dotenv = require('dotenv') // .env file
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io"); // For GPS/Map Updates
@@ -23,6 +24,8 @@ const wss = new WebSocket.Server({ noServer: true }); // Raw WS for Sonar Plot
 
 // --- FIX: Storage for active raw WebSocket clients ---
 const rawWsClients = new Set(); 
+
+dotenv.config() // using .env
 
 wss.on('connection', (ws) => {
     rawWsClients.add(ws);
@@ -91,12 +94,14 @@ CREATE TABLE IF NOT EXISTS gps_raw (
     message jsonb
 );`;
 
+const DBPASS = process.env.DBPASS
+
 // GPS Tracker Database
 const GPS_PG_CONFIG = {
   user: "pi",
   host: "localhost",
   database: "gps_tracker",
-  password: "ch1rlt4n", 
+  password: DBPASS,
   port: 5432,
 };
 
@@ -105,7 +110,7 @@ const SONAR_PG_CONFIG = {
     user: 'pi',
     host: 'localhost',
     database: 'sonar',
-    password: 'ch1rlt4n',
+    password:  DBPASS,
     port: 5432, 
 };
 
