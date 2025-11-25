@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS gps_raw (
     message jsonb
 );`;
 
-const DBPASS = process.env.DBPASS
+const DBPASS = process.env.DBPASS;
 
 // GPS Tracker Database
 const GPS_PG_CONFIG = {
@@ -134,7 +134,7 @@ let lastDbWriteTimestamp = 0;
  */
 const collectedSonarData = []; 
 // Serial Port Config
-const COM_PORT_PATH = '/dev/ttyACM1'; // Sonar
+const COM_PORT_PATH = '/dev/ttyACM0'; // Sonar
 const BAUD_RATE = 250000;
 // Sonar Physical Constants 
 const SAMPLE_RESOLUTION = 0.2178; // cm/sample
@@ -328,7 +328,7 @@ async function processDataPacket(rawSamples) {
 }
 
 // SONAR USB PORT LISTENER
-function startComPortListener() {
+function startSonarPort() {
     if (typeof SerialPort === 'undefined') {
         console.warn("[SONAR WARN] SerialPort not initialized.");
         return;
@@ -609,7 +609,7 @@ async function main() {
         console.error("CRITICAL ERROR: Failed to setup Sonar database table.", err.message);
         // Do not exit, allow the GPS tracking part to continue
     }
-    startComPortListener(); 
+    startSonarPort(); 
 
     // Start server
     server.listen(PORT, "0.0.0.0", () => {
