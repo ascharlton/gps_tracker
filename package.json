@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "chalk": "^5.6.2",
+    "commader": "^1.0.0",
+    "commander": "^14.0.2",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "pg": "^8.16.3",

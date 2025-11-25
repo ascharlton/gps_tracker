@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Sonar Plot (D3.js)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .chart-container { 
+            border: 1px solid #ccc; 
+            border-radius: 5px; 
+            padding: 10px;
+        }
+        .signal-point { 
+            opacity: 0.8; 
+            transition: cx 0.1s linear, r 0.1s linear;
+        }
+        .x-axis path, .y-axis path { display: none; }
+        .x-axis line, .y-axis line { stroke: #ccc; }
+        .y-axis text { font-size: 10px; }
+        .stats-box {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px dashed #aaa;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Real-Time Sonar Reflection Tracker</h1>
+    <div class="stats-box">
+        <p><strong>Status:</strong> <span id="ws-status" style="color:red;">Disconnected</span></p>
+        <p><strong>Frame:</strong> <span id="frame-counter">0</span> | <strong>Signals:</strong> <span id="signal-count">0</span></p>
+        <p><strong>Noise Avg:</strong> <span id="noise-avg">N/A</span> | <strong>Threshold:</strong> <span id="dynamic-threshold">N/A</span></p>
+    </div>
+    
+    <div class="chart-container">
+        <svg id="sonar-chart"></svg>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const MARGIN = { top: 10, right: 30, bottom: 30, left: 60 };
+        const WIDTH = 1500 - MARGIN.left - MARGIN.right;
+        const HEIGHT = 600 - MARGIN.top - MARGIN.bottom;
+        const MAX_FRAMES = 80; // Should match MAX_PLOT_HISTORY_FRAMES in server.js
+
+        // Define a color scale for up to 20 signals
+        const COLOR_SCALE = d3.scaleOrdinal(d3.schemeCategory10);
+        // Add more distinct colors if needed (schemeCategory10 is 10 colors, it will cycle)
+        
+        // --- Chart Initialization ---
+        const svg = d3.select("#sonar-chart")
+            .attr("width", WIDTH + MARGIN.left + MARGIN.right)
+            .attr("height", HEIGHT + MARGIN.top + MARGIN.bottom)
+            .append("g")
+            .attr("transform", `translate(${MARGIN.left},${MARGIN.top})`);
+
+        // Scales (Initial setup, domains will be updated)
+        const xScale = d3.scaleLinear()
+            .range([0, WIDTH]);
+
+        const yScale = d3.scaleLinear()
+            .range([HEIGHT, 0]); // Invert Y-axis so index 0 is at the top
+
+        // Axes (placeholders)
+        const xAxisGroup = svg.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0, ${HEIGHT})`);
+        
+        const yAxisGroup = svg.append("g")
+            .attr("class", "y-axis");
+
+        // Y-axis Label (Signal Index / Depth)
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 0 - MARGIN.left)
+            .attr("x", 0 - (HEIGHT / 2))
+            .attr("dy", "1em")
+            .style("text-anchor", "middle")
+            .text("Sample Index (Depth)");
+
+        // --- Data Structure ---
+        let plotData = []; // [{frame: 1, signals: [140, 320, -1, ...]}, ...]
+        let maxIndex = 1800; // Will be updated by server data
+        let currentFrame = 0;
+
+
+        // --- WebSocket Setup ---
+        const ws = new WebSocket("ws://192.168.88.248:3000");
+
+        ws.onopen = () => {
+            document.getElementById("ws-status").textContent = "Connected";
+            document.getElementById("ws-status").style.color = "green";
+            console.log("WebSocket connected.");
+        };
+
+        ws.onclose = () => {
+            document.getElementById("ws-status").textContent = "Disconnected";
+            document.getElementById("ws-status").style.color = "red";
+            console.log("WebSocket disconnected.");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Update global state and DOM stats
+            currentFrame = data.frame;
+            maxIndex = data.maxSamples;
+            document.getElementById("frame-counter").textContent = currentFrame;
+            document.getElementById("noise-avg").textContent = data.noiseAvg.toFixed(1);
+            document.getElementById("dynamic-threshold").textContent = data.threshold.toFixed(1);
+            document.getElementById("signal-count").textContent = data.signals.filter(i => i !== -1).length;
+
+            // --- Update Plot Data ---
+            plotData.push(data);
+            if (plotData.length > MAX_FRAMES) {
+                plotData.shift(); // Keep only the last MAX_FRAMES data points
+            }
+
+            // --- Update Scales and Axes ---
+            xScale.domain([plotData[0].frame, currentFrame]);
+            yScale.domain([maxIndex, 0]); // Max index (1800) to 0
+
+            // The frame number is too large for the X-axis, so we use a relative index
+            xAxisGroup.transition().duration(100)
+                .call(d3.axisBottom(xScale).tickFormat(d => d - plotData[0].frame + 1));
+            
+            // Y-axis with 10 ticks, showing index 0 at the top
+            yAxisGroup.transition().duration(100)
+                .call(d3.axisLeft(yScale).ticks(10));
+
+            // --- Draw/Update Points (D3 Data Join) ---
+            
+            // Create a flat array of all points for the plot
+            const points = [];
+            plotData.forEach((frameData, frameIndex) => {
+                frameData.signals.forEach((index, signalId) => {
+                    if (index !== -1) {
+                        points.push({
+                            // The x position is the frame number (data.frame)
+                            x: frameData.frame, 
+                            // The y position is the detected index (depth)
+                            y: index, 
+                            // The signal ID for coloring
+                            id: signalId
+                        });
+                    }
+                });
+            });
+
+            // DATA JOIN
+            const circles = svg.selectAll(".signal-point")
+                .data(points, d => `${d.x}-${d.id}`); // Key function for smooth transitions
+
+            // EXIT (Remove points that are no longer in the history window)
+            circles.exit().transition().duration(100)
+                .attr("r", 0) // Shrink points before removal
+                .remove();
+
+            // UPDATE + ENTER (Draw new points and move existing ones)
+            circles.enter().append("circle")
+                .attr("class", "signal-point")
+                .merge(circles)
+                .transition().duration(100) // Transition for smooth movement
+                    .attr("cx", d => xScale(d.x))
+                    .attr("cy", d => yScale(d.y))
+                    .attr("r", 3) // Radius of the circle
+                    .attr("fill", d => COLOR_SCALE(d.id)); // Color based on signal ID
+
+        };
+
+    </script>
+</body>
+</html>

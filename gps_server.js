@@ -134,7 +134,7 @@ let lastDbWriteTimestamp = 0;
  */
 const collectedSonarData = []; 
 // Serial Port Config
-const COM_PORT_PATH = '/dev/ttyACM0'; // Sonar
+const SONAR_PORT = '/dev/ttySONAR'; // Sonar
 const BAUD_RATE = 250000;
 // Sonar Physical Constants 
 const SAMPLE_RESOLUTION = 0.2178; // cm/sample
@@ -335,14 +335,18 @@ function startSonarPort() {
     }
     
     const port = new SerialPort({ 
-         path: COM_PORT_PATH, 
+         path: SONAR_PORT, 
          baudRate: BAUD_RATE 
     });
     
-    port.on('error', (err) => { console.error('[COM ERROR]', err.message); });
+    port.on('error', (err) => { 
+      console.error('[SONAR ERROR]', err.message); 
+      console.log('EXITING due to lack of Sonar availability');
+      process.exit();
+    });
     port.on('data', serialBufferHandler); 
     
-    console.log(`[SONAR INFO] Serial port initialized on ${COM_PORT_PATH} at ${BAUD_RATE} Bps.`);
+    console.log(`[SONAR INFO] Serial port initialized on ${SONAR_PORT} at ${BAUD_RATE} Bps.`);
 }
 
 // --- 5. HTTP SERVER SETUP & ENDPOINTS ---
@@ -613,7 +617,7 @@ async function main() {
 
     // Start server
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`\n🚀 Consolidated Server running on http://0.0.0.0:${PORT}`);
+      console.log(`\n🚀 GPS Tracking Server running on http://0.0.0.0:${PORT}`);
     });
 }
 

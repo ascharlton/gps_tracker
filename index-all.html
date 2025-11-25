@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Sonar Plot (D3.js)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+    body {
+        background-color: #000000; 
+        color: #FFFFFF; 
+        font-family: Arial, sans-serif;
+    }
+    h1 {
+        color: #FFFFFF;
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.5); 
+    }
+    #status-container {
+        background-color: transparent; 
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    /* --- IMPORTANT for the D3 Plot --- */
+    /* If your plot uses a white background or axis lines, you may need to adjust the SVG styles here. */
+    .axis line, .axis path {
+        /* Change axis lines to gray/white for visibility on black background */
+        stroke: #A0A0A0; 
+    }
+    .axis text {
+        /* Change axis labels to white */
+        fill: #FFFFFF; 
+    }
+</style>
+</head>
+<body>
+
+    <h1>Real-Time Sonar Reflection Tracker</h1>
+    <div class="stats-box">
+        <p><strong>Status:</strong> <span id="ws-status" style="color:red;">Disconnected</span></p>
+        <p><strong>Frame:</strong> <span id="frame-counter">0</span> | <strong>Signals:</strong> <span id="signal-count">0</span></p>
+        <p><strong>Noise Avg:</strong> <span id="noise-avg">N/A</span> | <strong>Threshold:</strong> <span id="dynamic-threshold">N/A</span></p>
+    </div>
+    <div class="chart-container">
+        <svg id="sonar-chart"></svg>
+    </div>
+    <script>
+        // --- Configuration ---
+        //const MARGIN = { top: 10, right: 30, bottom: 30, left: 60 };
+        const MARGIN = { top: 20, right: 30, bottom: 40, left: 60 };
+        const WIDTH = 1500 - MARGIN.left - MARGIN.right;
+        const HEIGHT = 600 - MARGIN.top - MARGIN.bottom;
+        const MAX_FRAMES = 80; // Should match MAX_PLOT_HISTORY_FRAMES in server.js
+
+        // Define a color scale for up to 20 signals
+        const COLOR_SCALE = d3.scaleOrdinal(d3.schemeCategory10);
+        // Add more distinct colors if needed (schemeCategory10 is 10 colors, it will cycle)
+        
+        // --- Chart Initialization ---
+        const svg = d3.select("#sonar-chart")
+            .attr("width", WIDTH + MARGIN.left + MARGIN.right)
+            .attr("height", HEIGHT + MARGIN.top + MARGIN.bottom)
+            .append("g")
+            .attr("transform", `translate(${MARGIN.left},${MARGIN.top})`);
+
+        // Scales (Initial setup, domains will be updated)
+        const xScale = d3.scaleLinear()
+            .range([0, WIDTH]);
+
+        const yScale = d3.scaleLinear()
+            .range([HEIGHT, 0]); // Invert Y-axis so index 0 is at the top
+
+        // Axes (placeholders)
+        const xAxisGroup = svg.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0, ${HEIGHT})`);
+        
+        const yAxisGroup = svg.append("g")
+            .attr("class", "y-axis");
+
+        // Y-axis Label (Signal Index / Depth)
+        svg.append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 0 - MARGIN.left)
+            .attr("x", 0 - (HEIGHT / 2))
+            .attr("dy", "1em")
+            .style("text-anchor", "middle")
+            .text("Distance (Meters)");
+
+        // --- Data Structure ---
+        let plotData = []; // [{frame: 1, signals: [140, 320, -1, ...]}, ...]
+        let maxIndex = 1800; // Will be updated by server data
+        let currentFrame = 0;
+
+
+        // --- WebSocket Setup ---
+        const ws = new WebSocket("ws://192.168.88.248:3000");
+
+        ws.onopen = () => {
+            document.getElementById("ws-status").textContent = "Connected";
+            document.getElementById("ws-status").style.color = "green";
+            console.log("WebSocket connected.");
+        };
+
+        ws.onclose = () => {
+            document.getElementById("ws-status").textContent = "Disconnected";
+            document.getElementById("ws-status").style.color = "red";
+            console.log("WebSocket disconnected.");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // --- Global State and Conversion Factor ---
+            currentFrame = data.frame;
+            maxIndex = data.maxSamples;
+            // Get the meters per sample factor from the server
+            const M_PER_SAMPLE = data.M_PER_SAMPLE; 
+            // Calculate the maximum distance for the Y-axis 1800x0.00217
+            const MAX_DISTANCE_M = maxIndex * M_PER_SAMPLE; 
+
+            // --- Update DOM Stats ---
+            // Use Math.round() or toFixed(0) for cleaner display of high values
+            
+            document.getElementById("frame-counter").textContent = currentFrame;
+            document.getElementById("noise-avg").textContent = data.noiseAvg.toFixed(1);
+            document.getElementById("dynamic-threshold").textContent = data.threshold.toFixed(1);
+            document.getElementById("signal-count").textContent = data.signals.filter(i => i !== -1).length;
+
+
+            // --- Update Plot Data ---
+            plotData.push(data);
+            if (plotData.length > MAX_FRAMES) {
+                plotData.shift(); 
+            }
+
+            // --- Update Scales and Axes ---
+            xScale.domain([plotData[0].frame, currentFrame]);
+            // CRITICAL FIX: Set Y-domain to (MAX_DISTANCE_M, 0)
+            yScale.domain([MAX_DISTANCE_M, 0]); 
+
+            xAxisGroup.transition().duration(100)
+                .call(d3.axisBottom(xScale).tickFormat(d => d - plotData[0].frame + 1));
+            
+            // Y-axis with 10 ticks, labeled in meters (toFixed(1))
+            yAxisGroup.transition().duration(100)
+                .call(d3.axisLeft(yScale).ticks(10).tickFormat(d => d.toFixed(1) + ' m')); // <-- NEW DISTANCE LABEL
+
+            // --- Draw/Update Points (D3 Data Join) ---
+            
+            const points = [];
+            plotData.forEach((frameData, frameIndex) => {
+                frameData.signals.forEach((index, signalId) => {
+                    if (index !== -1) {
+                        // CRITICAL FIX: Convert sample index (y) to meters for plotting
+                        const distanceInMeters = index * M_PER_SAMPLE;
+                        points.push({
+                            x: frameData.frame, 
+                            y: distanceInMeters, 
+                            id: signalId
+                        });
+                    }
+                });
+            });
+
+            // DATA JOIN (No change here, only data values are different)
+            const circles = svg.selectAll(".signal-point")
+                .data(points, d => `${d.x}-${d.id}`); 
+
+            // EXIT
+            circles.exit().transition().duration(100)
+                .attr("r", 0) 
+                .remove();
+
+            // UPDATE + ENTER
+            circles.enter().append("circle")
+                .attr("class", "signal-point")
+                .merge(circles)
+                .transition().duration(100) 
+                    .attr("cx", d => xScale(d.x))
+                    .attr("cy", d => yScale(d.y)) // Y value is now in meters
+                    .attr("r", 3) 
+                    .attr("fill", d => COLOR_SCALE(d.id)); 
+        };
+
+    </script>
+</body>
+</html>
