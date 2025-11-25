@@ -14,16 +14,25 @@ const PACKET_HEADER = 0xAA;
 
 // --- Signal Tracking Configuration ---
 const NUM_SIGNALS = 20;
-const SIGNAL_THRESHOLD = 100;                   // 40KHz = 60, 200 KHz = 42 is optimum
+const SIGNAL_THRESHOLD = 60;                   // 40KHz = 60, 200 KHz = 42 is optimum
 const CONSISTENCY_SAMPLES = 10;          // 4-6 is good        
 const POSITION_TOLERANCE = 1;          
 const NOISE_FLOOR_RANGE = 300;          // 200 how far from the end of the signal to sample for noise
 const MIN_SIGNAL_SEPARATION = 20; // Minimum index difference for a separate signal
 const SNR_FACTOR = 4.4; // New: Multiplier (k) for Noise Std Dev to set the Dynamic Detection Threshold.
-
+const SONAR_FREQUENCY = 40; // 40 or 200 
 // Blind Zone Characteristics
-const IGNORE_FIRST_SAMPLES = 4;         // usually the first samples are below noise floor
-const MAX_BZ_SEARCH_SAMPLES = 320;      // Any signals close to the blind zone can be tracked with high thresholds only
+let MAX_BZ_SEARCH_SAMPLES; 
+let IGNORE_FIRST_SAMPLES;
+// Blind Zone Characteristics
+if (SONAR_FREQUENCY == 40){
+    MAX_BZ_SEARCH_SAMPLES = 300; 
+    IGNORE_FIRST_SAMPLES = 8;
+}else{
+    MAX_BZ_SEARCH_SAMPLES = 150;
+    IGNORE_FIRST_SAMPLES = 4; 
+}
+
 
 // --- Plotting Configuration ---
 const MAX_PLOT_HISTORY_FRAMES = 180;    // 80 The width of the plot in frames (X-axis)
@@ -461,7 +470,7 @@ async function runSerialConsole(portName) {
                 drawScrollingPlot();
                 
                 // Print detailed metrics below the plot
-                console.log(`--- Real-Time Metrics ---`);
+                console.log(`--- Real-Time Metrics --- ${SONAR_FREQUENCY}KHz`);
                 console.log(`Noise Floor: ${noiseFloor} (Avg: ${runningNoiseAvg}, Std Dev: ${runningStdDev})`);
                 console.log(`Dynamic Detection Threshold (k=${SNR_FACTOR}*StdDev): ${DYNAMIC_THRESHOLD}`);
                 console.log(`Blind Zone End Index (def: ${MAX_BZ_SEARCH_SAMPLES}): ${blindZoneIndexEnd}`);

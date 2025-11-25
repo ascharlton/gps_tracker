@@ -1,12 +1,12 @@
 // server.js - Consolidated GPS, Sonar, DB, and Single Raw WebSocket Server
-
+// SONAR - only has simple check for first signal closest to sensor bove a certain threshold 
 // TODO 
 // check and create gps tables before running program
-// post console log of gps tbale setup
 
 const express = require("express");
 const fs = require("fs");
 const dotenv = require('dotenv') // .env file
+dotenv.config() // using .env
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io"); // For GPS/Map Updates
@@ -14,18 +14,59 @@ const WebSocket = require("ws");       // For High-Speed Binary Sonar Stream
 const { spawn } = require("child_process");
 const { Pool } = require("pg");
 const { SerialPort } = require('serialport'); 
+// ----- GLOBALS ----- //
+// Serial Port Config
+const SONAR_PORT = '/dev/ttySONAR'; // Sonar
+const BAUD_RATE = 250000;
+// Sonar Physical Constants 
+const SAMPLE_RESOLUTION = 0.198; // cm/sample
+const ORIGINAL_SAMPLE_COUNT = 1800;
+const NUM_SAMPLES = ORIGINAL_SAMPLE_COUNT;
+const SIGNAL_THRESHOLD = 60;
+const NOISE_FLOOR_RANGE = 100; 
+const EMA_ALPHA = 0.1;
+// Serial Packet Structure
+const HEADER_BYTE = 0xAA;
+const NUM_METADATA_BYTES = 6;
+const SAMPLES_BYTE_SIZE = NUM_SAMPLES * 2;
+const PACKET_SIZE = 1 + NUM_METADATA_BYTES + SAMPLES_BYTE_SIZE + 1; 
+// Blind Zone Characteristics
+const SONAR_FREQUENCY = 40; // 40 or 200 
+// Blind Zone Characteristics
+let MAX_BZ_SEARCH_SAMPLES; 
+let IGNORE_FIRST_SAMPLES;
+// Blind Zone Characteristics
+if (SONAR_FREQUENCY == 40){
+    MAX_BZ_SEARCH_SAMPLES = 300; 
+    IGNORE_FIRST_SAMPLES = 8;
+}else{
+    MAX_BZ_SEARCH_SAMPLES = 150;
+    IGNORE_FIRST_SAMPLES = 4; 
+}
+// Database Throttling - time delay to write sonar data to database
+const DB_WRITE_INTERVAL_MS = 3000; // 3 seconds interval for logging to DB
 
+const PORT = 5000;
+const DEBUG = process.argv.includes("DEBUG=1") || process.env.DEBUG === "1";
+
+// Start server
 const app = express();
 const server = http.createServer(app);
 
 // Dual WebSocket Setup
 const io = new Server(server); // Socket.IO for GPS/Map
 const wss = new WebSocket.Server({ noServer: true }); // Raw WS for Sonar Plot
-
-// --- FIX: Storage for active raw WebSocket clients ---
 const rawWsClients = new Set(); 
 
-dotenv.config() // using .env
+// This global variable holds the latest, smoothed depth measurement (in CM)
+let lastSmoothedDistance = null; 
+let comBuffer = Buffer.alloc(0);
+let lastDbWriteTimestamp = 0; 
+/**
+ * Array to temporarily hold processed sonar packets.
+ * This collects all data between throttling intervals and socket emits.
+ */
+const collectedSonarData = []; 
 
 wss.on('connection', (ws) => {
     rawWsClients.add(ws);
@@ -52,9 +93,6 @@ server.on('upgrade', (request, socket, head) => {
     }
 });
 
-
-const PORT = 5000;
-const DEBUG = process.argv.includes("DEBUG=1") || process.env.DEBUG === "1";
 
 // --- GLOBAL GPS STATE (for Sonar use) ---
 let currentGpsData = { 
@@ -122,78 +160,81 @@ const sonarPool = new Pool(SONAR_PG_CONFIG);
 sonarPool.connect().then(() => console.log("[SONAR DB] Connected to Sonar PostgreSQL"))
   .catch(err => console.error("[ERROR] Sonar DB connection failed:", err.message));
 
-// --- 2. SONAR LOGGING GLOBALS & CONSTANTS ---
-
-// This global variable holds the latest, smoothed depth measurement (in CM)
-let lastSmoothedDistance = null; 
-let comBuffer = Buffer.alloc(0);
-let lastDbWriteTimestamp = 0; 
-/**
- * Array to temporarily hold processed sonar packets.
- * This collects all data between throttling intervals and socket emits.
- */
-const collectedSonarData = []; 
-// Serial Port Config
-const SONAR_PORT = '/dev/ttySONAR'; // Sonar
-const BAUD_RATE = 250000;
-// Sonar Physical Constants 
-const SAMPLE_RESOLUTION = 0.2178; // cm/sample
-const ORIGINAL_SAMPLE_COUNT = 1800;
-const NUM_SAMPLES = ORIGINAL_SAMPLE_COUNT;
-const NOISE_FLOOR_RANGE = 100; 
-const EMA_ALPHA = 0.1;
-// Serial Packet Structure
-const HEADER_BYTE = 0xAA;
-const NUM_METADATA_BYTES = 6;
-const SAMPLES_BYTE_SIZE = NUM_SAMPLES * 2;
-const PACKET_SIZE = 1 + NUM_METADATA_BYTES + SAMPLES_BYTE_SIZE + 1; 
-// Database Throttling - time delay to write sonar data to database
-const DB_WRITE_INTERVAL_MS = 3000; // 3 seconds interval for logging to DB
-
-
 
 // --- 3. HELPER FUNCTIONS FOR SONAR FRAME PROCESSING ---
 
 // get the noisefloor for calculating the edge of the xdcr deadzone
 function calculateNoiseFloor(samples) {
-    const start = samples.length - NOISE_FLOOR_RANGE;
+    const start = samples.length - NOISE_FLOOR_RANGE; // 100 typically
     if (start < 0) return 0;
     const tailSamples = samples.slice(start);
     const sum = tailSamples.reduce((acc, val) => acc + val, 0);
     return sum / NOISE_FLOOR_RANGE;
 }
 
-// find edge of dead zone, threshold is just above the noise floor which indicates where the noise floor begins   
-function findBlindZoneEnd(samples, noiseFloor) {
-    const searchLimit = 500; 
-    const threshold = noiseFloor * 1.2; 
-    for (let i = 0; i < Math.min(samples.length, searchLimit); i++) { 
-        if (samples[i] <= threshold) { // first value that is below threshold == noise floor starts
-            return i;
+class NoiseFloorAverager {
+    constructor() {
+        this.samples = [];
+        this.maxSize = 100; 
+    }
+    update(noiseFloor) {
+        this.samples.push(noiseFloor);
+        if (this.samples.length > this.maxSize) {
+            this.samples.shift();
         }
     }
-    return 150; 
+    getRunningAverage() {
+        if (this.samples.length === 0) return '0.0';
+        const sum = this.samples.reduce((a, b) => a + b, 0);
+        return (sum / this.samples.length).toFixed(1);
+    }
+    getStandardDeviation() {
+        if (this.samples.length < 2) return '0.0';
+        const mean = parseFloat(this.getRunningAverage());
+        const squaredDifferences = this.samples.map(n => Math.pow(n - mean, 2));
+        const variance = squaredDifferences.reduce((a, b) => a + b, 0) / this.samples.length;
+        return Math.sqrt(variance).toFixed(1);
+    }
 }
 
-// We want to keep track of the main reflection not any secondary reflection or noise
-function findPrimaryReflection(samples) {
+// find edge of dead zone, threshold is just above the noise floor which indicates where the noise floor begins   
+function findBlindZoneEnd(samples, noiseav) {
+    //IGNORE_FIRST_SAMPLES == index to start looking fior Blind Zone
+    const searchLimit = 500; 
+    const threshold = noiseav * 0.9; // 0.9 change to Std Dev
+    for (let i = IGNORE_FIRST_SAMPLES; i < Math.min(samples.length, searchLimit); i++) {  // 1800, 500
+        if (samples[i] <= threshold) { // first value that is below threshold
+            //console.log(`BLINDZONE (index, value, noisefloor, NFthreshold*0.9):  ,${i} : ${samples[i]} : ${noiseFloor} : ${threshold}`);
+            return i; // the Frame
+        }
+    }
+    return MAX_BZ_SEARCH_SAMPLES; 
+}
+
+// We want to keep track of the main reflection not any dead zone, secondary reflection or noise
+function findPrimaryReflection(samples, noiseFloorAvg) {
     if (samples.length === 0) {
         return { value: 0, index: -1, distance: 0, blindZoneEndIndex: 0 };
     }
-    const noiseFloor = calculateNoiseFloor(samples); 
-    const startIndex = findBlindZoneEnd(samples, noiseFloor);
-    let maxValue = 0;
-    let maxIndex = -1;
+    //const noiseFloor = calculateNoiseFloor(samples); 
+    //console.log("NOISEFLOOR ",noiseFloor);
+    const startIndex = findBlindZoneEnd(samples, noiseFloorAvg);
+    //console.log("BLINDZONE ",startIndex,samples[startIndex]);
+    let signalValue = 0;
+    let signalIndex = -1;
+
+    // takes the fist signal found after blinzone has been removed
     for (let i = startIndex; i < samples.length; i++) {
-        if (samples[i] > maxValue) {
-            maxValue = samples[i];
-            maxIndex = i;
+        if (samples[i] > SIGNAL_THRESHOLD) { // if this is too low you collect all signals above this value, leaving the last signal as the index, thats why we break on the first usable value
+            signalValue = samples[i];
+            signalIndex = i;
+            break;
         }
     }
-    const rawDistanceCm = maxIndex * SAMPLE_RESOLUTION;
+    const rawDistanceCm = signalIndex * SAMPLE_RESOLUTION;
     return { 
-        value: maxValue, 
-        index: maxIndex, 
+        value: signalValue, 
+        index: signalIndex, 
         distance: rawDistanceCm,
         blindZoneEndIndex: startIndex
     };
@@ -212,9 +253,10 @@ function applyExponentialSmoothing(currentDistance) {
 }
 
 // --- 4. SONAR DATA ACQUISITION & PARSING ---
+
 function serialBufferHandler(data) {
     comBuffer = Buffer.concat([comBuffer, data]);
-
+    
     while (comBuffer.length >= PACKET_SIZE) {
         const headerIndex = comBuffer.indexOf(HEADER_BYTE);
         
@@ -242,16 +284,26 @@ function serialBufferHandler(data) {
     }
 }
 
+const noiseAverager = new NoiseFloorAverager();
 /**
  * Main data processing and logging function, runs on every sonar frame.
  */
 async function processDataPacket(rawSamples) {
     const timestamp = new Date();
-    const reflection = findPrimaryReflection(rawSamples);
+    //const noiseAverager = new NoiseFloorAverager();
+    //const noiseFloor = calculateNoiseFloor(samples); 
+    const noiseFloor  = calculateNoiseFloor(rawSamples);
+    //console.log(`noise for this frame: ${noiseFloor}`);
+    noiseAverager.update(noiseFloor);
+    const runningNoiseAvgValue = parseFloat(noiseAverager.getRunningAverage());
+    //console.log(`noise stats at this Frame (noise|running avg): ${noiseFloor} | ${runningNoiseAvgValue}`);
+
+    const reflection = findPrimaryReflection(rawSamples, runningNoiseAvgValue);
+    //console.log("reflection values:  ",reflection);
     const smoothedDistance = applyExponentialSmoothing(reflection.distance);
     
     // Skip processing and collection if peak is too low
-    if (reflection.value < 50) return; 
+    if (reflection.value < SIGNAL_THRESHOLD) return; 
 
     // --- FIX: Emit single point (Smoothed Distance & Peak) as BINARY over RAW WS ---
     const distMM = Math.round(smoothedDistance * 10); // Distance in cm to mm (Uint16)
@@ -483,6 +535,7 @@ function startGpsPipe() {
     for (let line of lines) {
       try {
         const msg = JSON.parse(line);
+        console.log(`[STATUS] ${msg.status}`);
         if (DEBUG) console.log("[DEBUG]", msg.class, msg.mode || "");
 
         // --- Store every message in gps_raw ---
@@ -566,8 +619,8 @@ function startGpsPipe() {
               accuracy: horizAcc,
               status: msg.status ?? null, // add GPSD status field if present
               depth_m: currentDepthMeters // Synchronized Sonar Depth (meters)
-            });
-            console.log(`[EMIT] gps: ${msg.lat}, ${msg.lon}, ${msg.lon}, ${msg.alt}, ${msg.speed}, ${msg.track}, ${msg.time}, ${msg.mode}, ${msg.horizAcc}, ${msg.status}, ${currentDepthMeters}`);
+            });                                                                                                                 // undefined    undefined
+            console.log(`[EMIT] gps (not what is sent to socket): ${msg.lat}, ${msg.lon}, ${msg.alt}, ${msg.speed}, ${msg.track}, ${msg.time}, ${msg.mode}, ${horizAcc}, ${msg.status || "no status given"}, ${currentDepthMeters}`);
           }
         }
 
@@ -617,7 +670,7 @@ async function main() {
 
     // Start server
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`\n🚀 GPS Tracking Server running on http://0.0.0.0:${PORT}`);
+      console.log(`\n🚀 GPS Tracking Server running on http://0.0.0.0:${PORT} SONAR sensor using ${SONAR_FREQUENCY}KHz`);
     });
 }
 

@@ -23,18 +23,23 @@ const M_PER_SAMPLE_FACTOR = (SAMPLE_TIME * SPEED_OF_SOUND) / 2;
 
 // --- Signal Tracking Configuration ---
 const NUM_SIGNALS = 20;                 
-const SIGNAL_THRESHOLD = 120;            
+const SIGNAL_THRESHOLD = 60;            
 const CONSISTENCY_SAMPLES = 10;          
 const POSITION_TOLERANCE = 1;          
 const NOISE_FLOOR_RANGE = 200;          
 const MIN_SIGNAL_SEPARATION = 20;        
-const SNR_FACTOR = 2.5;                 
-
+const SNR_FACTOR = 2.5;     
+const SONAR_FREQUENCY = 40; // 40 or 200            
+let MAX_BZ_SEARCH_SAMPLES; 
+let IGNORE_FIRST_SAMPLES;
 // Blind Zone Characteristics
-const IGNORE_FIRST_SAMPLES = 4;         
-const MAX_BZ_SEARCH_SAMPLES = 150; 
-
-
+if (SONAR_FREQUENCY == 40){
+    MAX_BZ_SEARCH_SAMPLES = 300; 
+    IGNORE_FIRST_SAMPLES = 8;
+}else{
+    MAX_BZ_SEARCH_SAMPLES = 150;
+    IGNORE_FIRST_SAMPLES = 4; 
+}
 
 let packetcounter = 0;
 let wss; // WebSocket Server instance
@@ -77,6 +82,7 @@ function xcalculateNoiseFloor(values) {
     const noiseFilterAmplitude = noiseFloor * NOISE_FACTOR;
     return { noiseFloor, noiseFilterAmplitude };
 }
+
 class SignalTracker {
     constructor(consistencySamples, threshold, tolerance) {
         this.consistencySamples = consistencySamples;
@@ -357,7 +363,7 @@ function initSerialPort(portName) {
                         }
                     });
                 }
-                console.log(`Frame ${packetcounter}: Found ${detectedSignals.filter(s => s.index !== -1).length} signals. Noise Floor (Frame): ${noiseFloor.toFixed(1)} (Running Stats: Avg: ${runningNoiseAvgValue.toFixed(1)} | Std Dev: ${runningStdDevValue.toFixed(1)} | Min: ${min.toFixed(1)} | Max: ${max.toFixed(1)})`);
+                console.log(`${SONAR_FREQUENCY}KHz Frame ${packetcounter}: Found ${detectedSignals.filter(s => s.index !== -1).length} signals. Noise Floor (Frame): ${noiseFloor.toFixed(1)} (Running Stats: Avg: ${runningNoiseAvgValue.toFixed(1)} | Std Dev: ${runningStdDevValue.toFixed(1)} | Min: ${min.toFixed(1)} | Max: ${max.toFixed(1)})`);
             }
         });
 
