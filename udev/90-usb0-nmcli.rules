@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="usb0", RUN+="/usr/bin/nmcli connection up usb0-static"
