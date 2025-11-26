@@ -530,7 +530,8 @@
                 const clampedDepth = Math.min(safeDepth, MAX_DEPTH); 
                 const normalizedDepth = clampedDepth / MAX_DEPTH;
                 const color = getSmoothDepthColor(normalizedDepth);
-                const radius = 4 + (normalizedDepth * 12); 
+                const radius = 4 + (normalizedDepth * 20); 
+                //const radius = 4 + (normalizedDepth * 12); 
 
                 return {
                     radius: radius,
@@ -565,6 +566,7 @@
                 batch.forEach(p => {
                     // p: { lat, lon, depth_cm, time }
                     const depth_m = (p.depth_cm / 100.0) || 0;
+                    //console.log(p.depth_cm);
                     const style = getDepthStyle(depth_m);
 
                     const circle = L.circleMarker([p.lat, p.lon], style)

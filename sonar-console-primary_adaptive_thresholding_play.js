@@ -310,7 +310,7 @@ function drawScrollingPlot() {
             let char = ' ';
             
             if (frameData) {
-                // Check each of the 7 signals
+                // Check each of the signals
                 for (let s = 0; s < NUM_SIGNALS; s++) {
                     const signalIndex = frameData[s];
                     
@@ -329,8 +329,6 @@ function drawScrollingPlot() {
     plotLines.forEach(line => console.log(line));
     console.log(horizontalLine);
 }
-
-// --- Signal Index Extraction ---
 
 // --- Signal Index Extraction ---
 
@@ -377,13 +375,14 @@ function extractSignalIndices(values, consistentIndices, detectionThreshold) {
             }
             // Handle case where pulse extends to the end of the array
             if (currentPulseEnd === -1 && currentPulseWidth > 0) {
-                currentPulseEnd = values.length - 1; 
+                currentPulseEnd = values.length - 1;  // 1800
             }
             
             // Store the index and amplitude in the new array
             detectedSignals.push({
                 index: currentSignalStart,
-                amplitude: currentSignalAmplitude // <-- New: Store amplitude
+                amplitude: currentSignalAmplitude, // <-- New: Store amplitude
+                pulsewidth: currentPulseWidth
             });
             lastPulseEnd = currentPulseEnd;
             signalCount++;
@@ -398,7 +397,7 @@ function extractSignalIndices(values, consistentIndices, detectionThreshold) {
     
     // Pad with -1 index/amplitude objects to maintain NUM_SIGNALS length for the plot
     while (detectedSignals.length < NUM_SIGNALS) {
-        detectedSignals.push({ index: -1, amplitude: -1 });
+        detectedSignals.push({ index: -1, amplitude: -1 , pulsewidth: -1});
     }
 
     return detectedSignals;
@@ -452,14 +451,12 @@ async function runSerialConsole(portName) {
                 
                 // Filter signals for plot: only plot signals starting AFTER the blind zone
                 // We map the array of objects back to an array of indices for the existing plotHistory logic.
-                const currentFrameIndices = detectedSignals.map(sig => 
-                    (sig.index !== -1 && sig.index >= blindZoneIndexEnd) ? sig.index : -1
-                );
+                //const currentFrameIndices = detectedSignals.map(sig => (sig.index !== -1 && sig.index >= blindZoneIndexEnd) ? sig.index : -1);
+                const currentFrameIndices = detectedSignals.map(sig => (sig.index !== -1 && sig.index > 0) ? sig.index : -1);
                 
                 // Get the filtered signal/amplitude pairs for the metrics report
-                const currentFrameSignalsMetrics = detectedSignals
-                    .filter(sig => sig.index !== -1 && sig.index >= blindZoneIndexEnd)
-                    .map(sig => `${sig.index} (${sig.amplitude})`); // Formatting: Index (Amplitude)
+                //const currentFrameSignalsMetrics = detectedSignals.filter(sig => sig.index !== -1 && sig.index >= blindZoneIndexEnd).map(sig => `${sig.index} (${sig.amplitude})`); // Formatting: Index (Amplitude)
+                const currentFrameSignalsMetrics = detectedSignals.filter(sig => sig.index !== -1 && sig.index > 0).map(sig => `${sig.index} | ${sig.amplitude} | ${sig.pulsewidth}`); // Formatting: Index (Amplitude)
                 
                 // Add to history and maintain size
                 plotHistory.push(currentFrameIndices);
@@ -475,7 +472,7 @@ async function runSerialConsole(portName) {
                 console.log(`Noise Floor: ${noiseFloor} (Avg: ${runningNoiseAvg}, Std Dev: ${runningStdDev})`);
                 console.log(`Dynamic Detection Threshold (k=${SNR_FACTOR}*StdDev): ${DYNAMIC_THRESHOLD}`);
                 console.log(`Blind Zone End Index (def: ${MAX_BZ_SEARCH_SAMPLES}): ${blindZoneIndexEnd}`);
-                console.log(`Detected Signals (Index, Amplitude): ${currentFrameSignalsMetrics.join(', ') || 'None'}`);
+                console.log(`Detected Signals (Index, Amplitude, Pulse Width): ${currentFrameSignalsMetrics.join(', ') || 'None'}`);
                 console.log('='.repeat(MAX_PLOT_HISTORY_FRAMES + 9));
             }
         });

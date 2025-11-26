@@ -175,7 +175,7 @@ function calculateNoiseFloor(samples) {
 class NoiseFloorAverager {
     constructor() {
         this.samples = [];
-        this.maxSize = 100; 
+        this.maxSize = 100; // keep the max no of Frames to average on
     }
     update(noiseFloor) {
         this.samples.push(noiseFloor);
@@ -253,7 +253,6 @@ function applyExponentialSmoothing(currentDistance) {
 }
 
 // --- 4. SONAR DATA ACQUISITION & PARSING ---
-
 function serialBufferHandler(data) {
     comBuffer = Buffer.concat([comBuffer, data]);
     
@@ -439,7 +438,6 @@ app.get("/depth/all", async (req, res) => {
 });
 
 // --- EXISTING REST endpoints using Postgres (using 'gpsPool' for gps_tracker) ---
-
 app.get("/raw/:date", async (req, res) => {
   try {
     const date = req.params.date;
@@ -535,13 +533,12 @@ function startGpsPipe() {
     for (let line of lines) {
       try {
         const msg = JSON.parse(line);
-        console.log(`[STATUS] ${msg.status}`);
         if (DEBUG) console.log("[DEBUG]", msg.class, msg.mode || "");
 
         // --- Store every message in gps_raw ---
         await gpsPool.query("INSERT INTO gps_raw (message) VALUES ($1)", [msg]);
         io.emit("raw_count_update");
-        console.info(`[GPS DB] updating gps_raw`);
+        //console.info(`[GPS DB] updating gps_raw`);
 
         // --- Handle TPV messages ---
         if (msg.class === "TPV") {
@@ -620,7 +617,7 @@ function startGpsPipe() {
               status: msg.status ?? null, // add GPSD status field if present
               depth_m: currentDepthMeters // Synchronized Sonar Depth (meters)
             });                                                                                                                 // undefined    undefined
-            console.log(`[EMIT] gps (not what is sent to socket): ${msg.lat}, ${msg.lon}, ${msg.alt}, ${msg.speed}, ${msg.track}, ${msg.time}, ${msg.mode}, ${horizAcc}, ${msg.status || "no status given"}, ${currentDepthMeters}`);
+            console.log(`[EMIT] gps: ${msg.lat}, ${msg.lon}, ${msg.alt}, ${msg.speed}, ${msg.track}, ${msg.time}, ${msg.mode}, ${horizAcc}, ${msg.status || "no status given"}, ${currentDepthMeters}`);
           }
         }
 
