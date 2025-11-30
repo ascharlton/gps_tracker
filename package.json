@@ -7,6 +7,7 @@
     "start": "node gps_server.js"
   },
   "dependencies": {
+    "blessed": "^0.1.81",
     "chalk": "^5.6.2",
     "commader": "^1.0.0",
     "commander": "^14.0.2",
