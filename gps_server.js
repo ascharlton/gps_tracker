@@ -258,7 +258,7 @@ function findPrimaryReflection(samples, noiseFloorAvg, runningBZAvgIdx) {
     //const noiseFloor = calculateNoiseFloor(samples); 
     //console.log("NOISEFLOOR ",noiseFloor);
     const startIndex = runningBZAvgIdx;
-    console.log(`BLINDZONE startIndex: ${startIndex} sample value: ${samples[startIndex]}`);
+    //console.log(`BLINDZONE startIndex: ${startIndex} sample value: ${samples[startIndex]}`);
     let signalValue = 0;
     let signalIndex = -1;
 
@@ -284,7 +284,7 @@ function findPrimaryReflection(samples, noiseFloorAvg, runningBZAvgIdx) {
         }
     }
     const rawDistanceCm = signalIndex * SAMPLE_RESOLUTION; // this fluctuates with the noise
-    console.log(`6. distance values raw (${signalIndex} * ${SAMPLE_RESOLUTION}): ${rawDistanceCm.toFixed(1)}`);
+    //console.log(`6. distance values raw (${signalIndex} * ${SAMPLE_RESOLUTION}): ${rawDistanceCm.toFixed(1)}`);
     return { 
         value: signalValue, 
         index: signalIndex, 
@@ -334,7 +334,7 @@ function serialBufferHandler(data) {
           //process.exit(); 
         //}
         if(packetcounter > IGNORE_FIRST_SAMPLES){
-            console.log(`1. processing packet: ${packetcounter}`);
+            //console.log(`1. processing packet: ${packetcounter}`);
             processDataPacket(rawSamples); 
             comBuffer = comBuffer.slice(PACKET_SIZE); 
         }
@@ -356,7 +356,7 @@ async function processDataPacket(rawSamples) {
     const noiseFloor  = calculateNoiseFloor(rawSamples);
     noiseAverager.update(noiseFloor);
     const runningNoiseAvgValue = parseFloat(noiseAverager.getRunningAverage());
-    console.log(`2. noise stats at this Frame (noise|running avg): ${noiseFloor} | ${runningNoiseAvgValue}`);
+    //console.log(`2. noise stats at this Frame (noise|running avg): ${noiseFloor} | ${runningNoiseAvgValue}`);
 
     // find the blind zone index (we dont care about the value)
     const rawBZIndex = findBlindZoneEnd(rawSamples, runningNoiseAvgValue);
@@ -368,13 +368,14 @@ async function processDataPacket(rawSamples) {
     //console.log(`6. distance values raw (index * SAMPLE_RESOLUTION): ${reflection.distance.toFixed(1)}`);
     const smoothedDistance = applyExponentialSmoothing(reflection.distance);
     //console.log(`distance values, raw: ${reflection.distance.toFixed(1)} smoothed: ${smoothedDistance.toFixed(1)}`);
-    console.log(`7. distance values, smoothed: ${smoothedDistance.toFixed(1)} \n`);
+    console.log(`packet: ${packetcounter} distance values, smoothed: ${smoothedDistance.toFixed(2)} cm\n`);
     
     // Skip processing and collection if peak is too low
     if (reflection.value < SIGNAL_THRESHOLD) return; 
 
     // --- FIX: Emit single point (Smoothed Distance & Peak) as BINARY over RAW WS ---
-    const distMM = Math.round(smoothedDistance * 10); // Distance in cm to mm (Uint16)
+    //const distMM = Math.round(smoothedDistance * 10); // Distance in cm to mm (Uint16)
+    const distMM = (smoothedDistance * 100);
     //const distMM = Math.round(reflection.distance * 10); // Distance in cm to mm (Uint16)
     const peakValue = reflection.value > 255 ? 255 : reflection.value; // Clamp peak (Uint8)
 

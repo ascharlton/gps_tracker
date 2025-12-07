@@ -196,7 +196,7 @@
             y.domain([newMax, newMin]); 
             
             // Instantly update Y-axis visualization
-            yAxisG.call(d3.axisLeft(y).ticks(5)); 
+            yAxisG.call(d3.axisLeft(y).ticks(10)); 
             
             // Update status text
             document.getElementById("scaleStatus").textContent = `Dynamic (${newMin.toFixed(1)} to ${newMax.toFixed(1)} cm)`;
@@ -286,12 +286,12 @@
                 const peakValue = dataView.getUint8(2); 
 
                 // Convert distance from mm to cm
-                const distanceCm = distMM / 10.0;
+                const distanceCm = distMM / 100.0;
                 
                 // Only process and plot non-zero distances (valid readings)
                 if (distanceCm > 0) { 
                     // 1. Update info panel
-                    document.getElementById("distanceValue").textContent = `${distanceCm.toFixed(1)} cm`;
+                    document.getElementById("distanceValue").textContent = `${distanceCm.toFixed(2)} cm`;
                     document.getElementById("peakValue").textContent = peakValue;
                     
                     // 2. Update the scrolling history array
