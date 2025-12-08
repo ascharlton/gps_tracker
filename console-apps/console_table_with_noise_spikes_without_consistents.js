@@ -328,9 +328,9 @@ async function runSerialConsole(portName) {
                     // Priority 3: Below Noise Floor or Inconsistent Peak
                     else {
                         // Inconsistent peak (high value) or background noise (low value or below noise floor)
-                        //const paddedValue = value.toString().padStart(CELL_WIDTH, ' ');
-                        //outputString = `${ANSI_BLUE}${paddedValue}${ANSI_RESET}`;
-                        outputString = ' '.repeat(CELL_WIDTH);
+                        const paddedValue = value.toString().padStart(CELL_WIDTH, ' ');
+                        outputString = `${ANSI_BLUE}${paddedValue}${ANSI_RESET}`;
+                        //outputString = ' '.repeat(CELL_WIDTH);
                     }
                     
                     // Add the space separator AFTER the 3-char padded number/placeholder

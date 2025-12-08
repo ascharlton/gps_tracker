@@ -186,7 +186,6 @@ function findBlindZoneEnd(samples, noiseav) {
         noise_threshold = noiseav * 1.3; // 0.9 change to Std Dev
     }
     
-    
     //console.log(`blindzone noiseav ${noiseav}`);
     //for (let i = IGNORE_FIRST_SAMPLES; i < Math.min(samples.length, searchLimit); i++) {  // 1800, 500
     for (let i = 0; i < Math.min(samples.length, MAX_BZ_SEARCH_SAMPLES); i++) {  // 1800, 500
@@ -303,44 +302,6 @@ function applyExponentialSmoothing(currentDistance) {
     return smoothedDistance;
 }
 
-// --- 4. SONAR DATA ACQUISITION & PARSING ---
-function serialBufferHandler(data) {
-    comBuffer = Buffer.concat([comBuffer, data]);
-    
-    while (comBuffer.length >= PACKET_SIZE) {       // if the packet is not formed yet skip and waith for more data
-        const headerIndex = comBuffer.indexOf(HEADER_BYTE);
-        
-        if (headerIndex === -1) {
-            comBuffer = Buffer.alloc(0);
-            console.warn(`[SONAR WARN] Dropping entire buffer. No header found.`);
-            break;
-        }
-        if (headerIndex > 0) {
-            console.warn(`[SONAR WARN] Discarding ${headerIndex} junk bytes before header.`);
-            comBuffer = comBuffer.slice(headerIndex);
-            if (comBuffer.length < PACKET_SIZE) break; 
-        }
-        packetcounter++;
-        const packet = comBuffer.slice(0, PACKET_SIZE);
-        const payload = packet.slice(1, PACKET_SIZE - 1); 
-        const samplesBuffer = payload.slice(NUM_METADATA_BYTES);
-        const rawSamples = [];
-        for (let i = 0; i < NUM_SAMPLES; i++) {
-            rawSamples.push(samplesBuffer.readUInt16BE(i * 2));
-            //console.log(`raw sample first seen i|sample: ${i}|${rawSamples[i]}`);
-        }
-        //console.log(`[SONAR] processing sonar packet ${packetcounter}`);
-        //if(packetcounter == 4){
-          //process.exit(); 
-        //}
-        if(packetcounter > IGNORE_FIRST_SAMPLES){
-            //console.log(`1. processing packet: ${packetcounter}`);
-            processDataPacket(rawSamples); 
-            comBuffer = comBuffer.slice(PACKET_SIZE); 
-        }
-                           
-    }
-}
 
 const noiseAverager = new NoiseFloorAverager();
 const bzAverager = new BlindzoneAverager();
@@ -368,15 +329,16 @@ async function processDataPacket(rawSamples) {
     //console.log(`6. distance values raw (index * SAMPLE_RESOLUTION): ${reflection.distance.toFixed(1)}`);
     const smoothedDistance = applyExponentialSmoothing(reflection.distance);
     //console.log(`distance values, raw: ${reflection.distance.toFixed(1)} smoothed: ${smoothedDistance.toFixed(1)}`);
-    console.log(`packet: ${packetcounter} distance values, smoothed: ${smoothedDistance.toFixed(2)} cm\n`);
+    //console.log(`packet: ${packetcounter} distance, smoothed: ${smoothedDistance.toFixed(2)} cm\n`);
+    console.log(`packet: ${packetcounter} distance, raw: ${reflection.distance.toFixed(2)} cm\n`);
     
     // Skip processing and collection if peak is too low
     if (reflection.value < SIGNAL_THRESHOLD) return; 
 
     // --- FIX: Emit single point (Smoothed Distance & Peak) as BINARY over RAW WS ---
     //const distMM = Math.round(smoothedDistance * 10); // Distance in cm to mm (Uint16)
-    const distMM = (smoothedDistance * 100);
-    //const distMM = Math.round(reflection.distance * 10); // Distance in cm to mm (Uint16)
+    //const distMM = (smoothedDistance * 100);
+    const distMM = Math.round(reflection.distance * 100); // Distance in cm to mm (Uint16)
     const peakValue = reflection.value > 255 ? 255 : reflection.value; // Clamp peak (Uint8)
 
     // Create a 3-byte Buffer (2 bytes for distance in mm, 1 byte for peak value)
@@ -446,6 +408,47 @@ async function processDataPacket(rawSamples) {
         
     } catch (error) {
         console.error('[SONAR DB ERROR] Sonar database batch insertion failed:', error.message);
+    }
+}
+
+
+// --- 4. SONAR DATA ACQUISITION & PARSING ---
+function serialBufferHandler(data) {
+    comBuffer = Buffer.concat([comBuffer, data]);
+    
+    while (comBuffer.length >= PACKET_SIZE) {       // if the packet is not formed yet skip and waith for more data
+        const headerIndex = comBuffer.indexOf(HEADER_BYTE);
+        
+        if (headerIndex === -1) {
+            comBuffer = Buffer.alloc(0);
+            console.warn(`[SONAR WARN] Dropping entire buffer. No header found.`);
+            break;
+        }
+        if (headerIndex > 0) {
+            console.warn(`[SONAR WARN] Discarding ${headerIndex} junk bytes before header.`);
+            comBuffer = comBuffer.slice(headerIndex);
+            if (comBuffer.length < PACKET_SIZE) break; 
+        }
+        packetcounter++;
+        const packet = comBuffer.slice(0, PACKET_SIZE);
+        const payload = packet.slice(1, PACKET_SIZE - 1); 
+        const samplesBuffer = payload.slice(NUM_METADATA_BYTES);
+        const rawSamples = [];
+        for (let i = 0; i < NUM_SAMPLES; i++) {
+            rawSamples.push(samplesBuffer.readUInt16BE(i * 2));
+            //console.log(`raw sample first seen i|sample: ${i}|${rawSamples[i]}`);
+        }
+        //console.log(`[SONAR] processing sonar packet ${packetcounter}`);
+        //if(packetcounter == 4){
+          //process.exit(); 
+        //}
+        if(packetcounter > IGNORE_FIRST_SAMPLES){
+            //console.log(`1. processing packet: ${packetcounter}`);
+            processDataPacket(rawSamples); 
+             
+        }
+        comBuffer = comBuffer.slice(PACKET_SIZE);
+                           
     }
 }
 
