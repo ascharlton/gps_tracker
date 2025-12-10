@@ -11,12 +11,13 @@ const PACKET_LEN = 1 + PAYLOAD_LEN + 1; // Header (1) + Payload + Checksum (1)
 const PACKET_HEADER = 0xAA;
 
 // --- TRACKING CONFIGURATION ---
-const THRESHOLD = 62;                  // Minimum value a point must have to be considered a peak
+const THRESHOLD = 94;                  // Minimum value a point must have to be considered a peak
 const CONSISTENCY_SAMPLES = 10;         // Minimum number of samples a peak must appear in to be 'consistent'
 const POSITION_TOLERANCE = 1;          // Range (+/-) within which a peak position is considered the same
 const NOISE_FLOOR_RANGE = 800;         // Number of tail samples to use for noise floor calculation
 
 // Constants used for data conversion
+//const SPEED_OF_SOUND = 1522;
 const SPEED_OF_SOUND = 330;
 const SAMPLE_TIME = 13.2e-6;
 const SAMPLE_RESOLUTION = (SPEED_OF_SOUND * SAMPLE_TIME * 100) / 2;
@@ -32,7 +33,7 @@ const ANSI_RESET = '\x1b[0m';
 
 class SignalTracker {
     /**
-     * Manages a buffer of past sample arrays and identifies consistent signal indices.
+     * Manages a buffer (CONSISTENCY_SAMPLES) of past sample arrays and identifies consistent signal indices.
      */
     constructor(bufferSize, threshold, tolerance) {
         this.buffer = [];
@@ -47,17 +48,17 @@ class SignalTracker {
         const currentPeakIndices = [];
         for (let i = 0; i < currentValues.length; i++) {
             if (currentValues[i] >= this.threshold) {
-                currentPeakIndices.push(i);
+                currentPeakIndices.push(i); // array of all indexes over signal threshold
             }
         }
 
-        // 2. Update buffer (Store the indices, not the full values array)
+        // 2. Update buffer until size is reached 
         this.buffer.push(currentPeakIndices);
         if (this.buffer.length > this.bufferSize) {
             this.buffer.shift(); // Remove oldest peak list
         }
 
-        // Skip analysis until the buffer is full
+        // Skip analysis until the buffer is full return empty until the buffer is full 
         if (this.buffer.length < this.bufferSize) {
             this.consistentIndices.clear();
             return this.consistentIndices;
@@ -290,9 +291,12 @@ async function runSerialConsole(portName) {
                 const runningNoiseAvg = noiseAverager.getRunningAverage();
                 const { min, max } = noiseAverager.getMinMax(); // Get min/max values
 
-                // 2. Get Consistent Indices
+                // 2. Get Consistent Indices                                   // 1800 samples
                 const consistentIndices = tracker.updateAndGetConsistentIndices(values);
-
+                if(packetcounter == 10){
+                    console.log(consistentIndices);
+                    process.exit();
+                }
                 // --- TABLE GENERATION LOGIC ---
                 const NUM_COLUMNS = 50;
                 const NUM_ROWS = values.length / NUM_COLUMNS; 

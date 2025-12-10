@@ -90,7 +90,7 @@
                 Smoothed Depth: <span id="distanceValue" class="info-value">-- cm</span>
             </div>
             <div class="info-item">
-                Peak Value: <span id="peakValue" class="info-value">--</span>
+                Signal Value: <span id="peakValue" class="info-value">--</span>
             </div>
             <div class="info-item">
                 Scale: <span id="scaleStatus" class="info-value">Fixed (0 to 500 cm)</span>
@@ -111,7 +111,7 @@
     <script>
         // --- Configuration ---
         const HISTORY_SIZE = 2000; // Number of data points to display
-        const MAX_Y_CM = 5000;     // Default max depth for fixed scale (in cm)
+        const MAX_Y_CM = 500;     // Default max depth for fixed scale (in cm)
         const SCALE_PADDING_CM = 1; // Padding added above/below min/max for dynamic scale
         
         // --- Data & State ---
